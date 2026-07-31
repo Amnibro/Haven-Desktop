@@ -78,6 +78,10 @@ if (store.get('unlimitFrameRate')) {
 }
 
 // ── Suppress Chrome Autofill CDP warnings (harmless but noisy on startup) ──
+// NOTE: Chromium stores switches in a map, so a second appendSwitch with the
+// same key REPLACES the first. Every feature we want disabled has to live in
+// the single comma-joined list below (see #wgc-noise block further down, which
+// used to silently clobber this one).
 app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication');
 
 // ── Suppress Chromium stderr noise (WGC ProcessFrame spam, GPU errors, etc.) ──
@@ -111,7 +115,7 @@ app.commandLine.appendSwitch('image-decode-ct', '3');
 // Also disable IntensiveWakeUpThrottling (introduced in M87) which clamps
 // timers to 1Hz after the page is hidden for >5 minutes — catastrophic for
 // a long-running screen share if the OS ever flips the window to hidden.
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling');
+app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,CalculateNativeWinOcclusion,IntensiveWakeUpThrottling');
 // #5379 (follow-up) — the CalculateNativeWinOcclusion flag only stops
 // Chromium from *calculating* occlusion itself. Windows' own DWM still
 // signals occlusion when another window is snap-maximized over Haven, and

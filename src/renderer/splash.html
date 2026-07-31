@@ -4,65 +4,47 @@
   <meta charset="UTF-8">
   <title>Loading Haven…</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      height: 100%;
-      width: 100%;
-      background: #0d0d1a;
-      color: #e0e0e0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      overflow: hidden;
-      user-select: none;
-      -webkit-user-select: none;
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body{
+      height:100%;width:100%;
+      background:#0b0d12;color:#eef1f6;
+      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+      overflow:hidden;user-select:none;-webkit-user-select:none;
+      -webkit-font-smoothing:antialiased;
     }
-    .wrap {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 22px;
+    .wrap{
+      position:absolute;inset:0;
+      display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:18px;
     }
-    .hex {
-      width: 96px;
-      height: 96px;
-      filter: drop-shadow(0 0 32px rgba(107, 79, 219, .45));
-      animation: pulse 2.2s ease-in-out infinite;
-      image-rendering: -webkit-optimize-contrast;
+    .hex{
+      width:88px;height:88px;
+      border-radius:22px;
+      filter:drop-shadow(0 0 28px rgba(109,40,217,.35));
+      animation:pulse 2.2s ease-in-out infinite;
+      image-rendering:-webkit-optimize-contrast;
     }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1);    opacity: 1;   }
-      50%      { transform: scale(1.06); opacity: .85; }
+    @keyframes pulse{
+      0%,100%{transform:scale(1);opacity:1}
+      50%{transform:scale(1.04);opacity:.88}
     }
-    h1 {
-      font-size: 26px;
-      font-weight: 700;
-      letter-spacing: .5px;
-      margin-bottom: -6px;
+    h1{
+      font-size:24px;font-weight:680;letter-spacing:-.03em;margin:0;
     }
-    h1 .brand { color: #6b4fdb; }
-    .status {
-      color: #888;
-      font-size: 13px;
-      letter-spacing: .3px;
+    h1 .brand{color:#F5F5F7}
+    .status{color:#6E6E73;font-size:13.5px;letter-spacing:-.01em}
+    .spinner{
+      width:26px;height:26px;
+      border:2px solid rgba(255,255,255,.1);
+      border-top-color:#00ff9d;
+      border-radius:50%;
+      animation:spin .8s linear infinite;
+      margin-top:4px;
     }
-    .spinner {
-      width: 28px; height: 28px;
-      border: 3px solid #2a2a50;
-      border-top-color: #6b4fdb;
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-      margin-top: 6px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .footer {
-      position: absolute;
-      bottom: 14px;
-      left: 0; right: 0;
-      text-align: center;
-      color: #555;
-      font-size: 11px;
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .footer{
+      position:absolute;bottom:16px;left:0;right:0;
+      text-align:center;color:#6E6E73;font-size:11.5px;
     }
   </style>
 </head>
