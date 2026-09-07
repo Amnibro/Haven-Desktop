@@ -2,6 +2,8 @@ name: Build Haven Desktop (Tauri)
 
 on:
   push:
+    branches:
+      - cursor/tauri-port-3a53
     tags:
       - "v*"
   workflow_dispatch:
@@ -27,7 +29,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: "./src-tauri -> target"
 
       - name: Install frontend dependencies
         run: npm ci
@@ -44,8 +46,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Create/update GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+      - name: Publish GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -59,13 +60,13 @@ jobs:
           TITLE="${TAG#v}"
           NOTES="Haven Desktop Tauri build (${TITLE}).
 
-Windows NSIS installer — download, run, done. Same idea as the Electron \`Haven-Setup-*.exe\` releases.
+Windows one-click NSIS installer — same idea as the Electron Haven-Setup-*.exe releases.
 
 Requires a Haven server to connect to."
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "$TITLE" \
+              --title "Haven ${TITLE}" \
               --notes "$NOTES" \
               --latest=false
           fi
