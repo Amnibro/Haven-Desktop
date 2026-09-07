@@ -62,7 +62,6 @@
       },
       "nsis": {
         "installMode": "currentUser",
-        "oneClick": true,
         "installerIcon": "icons/icon.ico",
         "displayLanguageSelector": false,
         "startMenuFolder": "Haven"
