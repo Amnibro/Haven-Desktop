@@ -1,36 +1,32 @@
 {
   "name": "haven-desktop",
-  "version": "1.4.26",
-  "description": "Haven Desktop — Private chat, reimagined for your desktop",
-  "main": "src/main/main.js",
-  "author": {
-    "name": "Haven Contributors",
-    "email": "help.havenapp@gmail.com"
-  },
+  "private": true,
+  "version": "2.0.0",
+  "description": "Haven Desktop — Private chat, reimagined for your desktop (Tauri)",
   "license": "AGPL-3.0",
-  "homepage": "https://ancsemi.github.io/Haven/",
+  "type": "module",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
-    "build": "npm run build:native && electron-builder",
-    "build:win": "npm run build:native && electron-builder --win",
-    "build:linux": "npm run build:native && electron-builder --linux",
-    "build:native": "node ./node_modules/node-gyp/bin/node-gyp.js rebuild --directory=native",
-    "rebuild:electron": "node ./node_modules/@electron/rebuild/lib/cli.js && npm run build:native",
-    "postinstall": "node ./node_modules/@electron/rebuild/lib/cli.js || echo electron-rebuild skipped"
+    "dev": "vite --port 14370",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
-    "electron-store": "^8.2.0",
-    "electron-updater": "^6.3.9",
-    "node-addon-api": "^8.3.0"
-  },
-  "optionalDependencies": {
-    "uiohook-napi": "^1.5.4"
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-clipboard-manager": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-global-shortcut": "^2",
+    "@tauri-apps/plugin-notification": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/plugin-store": "^2"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.1",
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8",
-    "node-gyp": "^10.3.1"
+    "@tauri-apps/cli": "^2",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
   }
 }
