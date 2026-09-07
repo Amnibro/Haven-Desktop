@@ -38,7 +38,17 @@ npm install
 npm run tauri:dev
 ```
 
+Or use the one-click scripts (same idea as the Electron Desktop repo):
+
+1. Double-click **`Setup.bat`** — installs npm deps  
+2. Double-click **`Start Haven Desktop.bat`** — runs the app  
+3. Double-click **`Build Installer.bat`** — creates a one-click NSIS `.exe` under `src-tauri\target\release\bundle\nsis\`
+
 Do **not** prefix with `CXX=g++` — that is Linux/macOS shell syntax and will fail in `cmd.exe`.
+
+Windows also needs:
+- [Rust](https://rustup.rs)
+- [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **Desktop development with C++**
 
 ### Linux / macOS
 
