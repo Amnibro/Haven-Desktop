@@ -41,8 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: haven-desktop-windows
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
+          path: src-tauri/target/release/bundle/nsis/*.exe
           retention-days: 30
           if-no-files-found: error
 
@@ -58,17 +57,9 @@ jobs:
             TAG="v2.0.0-tauri"
           fi
           TITLE="${TAG#v}"
-          NOTES="Haven Desktop Tauri build (${TITLE}).
-
-Windows one-click NSIS installer — same idea as the Electron Haven-Setup-*.exe releases.
-
-Requires a Haven server to connect to."
+          NOTES="Haven Desktop Tauri build (${TITLE}). Windows one-click NSIS installer. Requires a Haven server."
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "Haven ${TITLE}" \
-              --notes "$NOTES" \
-              --latest=false
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Haven ${TITLE}" --notes "$NOTES" --latest=false
           fi
           mapfile -t FILES < <(ls -1 src-tauri/target/release/bundle/nsis/*.exe)
           gh release upload "$TAG" "${FILES[@]}" --repo "$GITHUB_REPOSITORY" --clobber
