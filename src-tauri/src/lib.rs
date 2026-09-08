@@ -1,6 +1,7 @@
 mod audio;
 mod commands;
 mod i18n;
+mod lowmem;
 mod server_manager;
 mod state;
 mod theme_icon;
@@ -165,12 +166,21 @@ pub fn run() {
                     }
                 }
             }
+            if window.label() == "main" {
+                let main = window.app_handle().get_webview_window("main");
+                match event {
+                    tauri::WindowEvent::Focused(true) => { if let Some(w) = &main { lowmem::set_low_memory(w, false); } }
+                    tauri::WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => { if let Some(w) = &main { lowmem::set_low_memory(w, true); } }
+                    _ => {}
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     if let Ok(minimize) = state::get_bool(window.app_handle(), "minimizeToTray") {
                         if minimize {
                             api.prevent_close();
                             let _ = window.hide();
+                            if let Some(w) = window.app_handle().get_webview_window("main") { lowmem::set_low_memory(&w, true); }
                         }
                     }
                 }
