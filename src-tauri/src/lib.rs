@@ -3,6 +3,7 @@ mod commands;
 mod i18n;
 mod server_manager;
 mod state;
+mod theme_icon;
 mod tray;
 
 use state::AppState;
@@ -111,6 +112,7 @@ pub fn run() {
             commands::dialog_confirm,
             commands::dialog_prompt,
             commands::get_inject_script,
+            theme_icon::theme_colors,
         ])
         .setup(|app| {
             // Ensure store file exists with defaults
@@ -118,6 +120,10 @@ pub fn run() {
             state::ensure_defaults(app.handle())?;
             state::refresh_locale(app.handle())?;
             tray::setup_tray(app.handle())?;
+            {
+                let (bg, fg) = theme_icon::stored(app.handle());
+                theme_icon::apply(app.handle(), bg, fg);
+            }
             check_for_update(app.handle().clone());
             if let Some(welcome) = app.get_webview_window("welcome") {
                 commands::accept_self_signed(&welcome);

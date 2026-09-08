@@ -47,6 +47,29 @@
     window.open(a.href, '_blank');
   }, true);
 
+  // Themed app icon and title bar, like the mobile launcher icon: send the
+  // active theme id and its live colors whenever data-theme changes.
+  let lastTheme = '';
+  function syncTheme() {
+    try {
+      const root = document.documentElement;
+      let theme = root.getAttribute('data-theme') || '';
+      const saved = localStorage.getItem('haven-theme') || '';
+      if (saved.startsWith('file:')) theme = saved.slice(5).replace(/\.css$/i, '');
+      const cs = getComputedStyle(root);
+      const bg = (cs.getPropertyValue('--bg-primary') || '').trim();
+      const accent = (cs.getPropertyValue('--accent') || '').trim();
+      const key = theme + '|' + bg + '|' + accent;
+      if (key === lastTheme) return;
+      lastTheme = key;
+      invoke('theme_colors', { theme, bg, accent }).catch(() => {});
+    } catch {}
+  }
+  new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
+  window.addEventListener('DOMContentLoaded', syncTheme);
+  window.addEventListener('load', () => { syncTheme(); setTimeout(syncTheme, 1500); });
+  window.addEventListener('storage', syncTheme);
+
   if (document.documentElement) {
     document.documentElement.setAttribute('data-desktop-app', '1');
   } else {

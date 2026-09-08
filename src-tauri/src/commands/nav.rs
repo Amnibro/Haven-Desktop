@@ -143,6 +143,8 @@ pub fn open_app_window(app: &AppHandle, server_url: &str) -> Result<(), String> 
         let builder = builder.additional_browser_args(BROWSER_ARGS);
         let main = builder.build().map_err(|e| e.to_string())?;
         accept_self_signed(&main);
+        let (bg, fg) = crate::theme_icon::stored(app);
+        crate::theme_icon::apply(app, bg, fg);
     }
 
     if let Some(welcome) = app.get_webview_window("welcome") {

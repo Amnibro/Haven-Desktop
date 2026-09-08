@@ -13,7 +13,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))?;
 
-    let _tray = TrayIconBuilder::new()
+    let _tray = TrayIconBuilder::with_id("main")
         .icon(icon)
         .menu(&menu)
         .tooltip(state::t(app, "tray.tooltip"))

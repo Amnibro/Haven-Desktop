@@ -50,5 +50,6 @@ commands.allow = [
   "dialog_alert",
   "dialog_confirm",
   "dialog_prompt",
-  "get_inject_script"
+  "get_inject_script",
+  "theme_colors"
 ]
