@@ -794,46 +794,60 @@ function showScreenPicker(sources, audioApps, requestId) {
   overlay.lang = i18nState.locale;
   overlay.innerHTML = `
     <style>
+      /* The picker is an overlay inside the Haven page, so the app's theme
+         variables are in scope. Fallbacks keep the login and splash pages,
+         which carry no theme, looking the way they did. */
       #haven-screen-picker {
         position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:999999;
         display:flex;align-items:center;justify-content:center;
-        font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+        font-family:var(--font-main,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif);
       }
-      .hsp-box{background:#1a1a2e;border-radius:14px;padding:28px;max-width:820px;width:92%;
-        max-height:82vh;display:flex;flex-direction:column;border:1px solid rgba(107,79,219,.3);
+      /* height (not max-height) makes the flex budget definite on the first
+         layout, min-height on the list keeps the window grid from being
+         squeezed out by a tall audio-app row, and the audio row scrolls on
+         its own past 30vh. Together they end the "no scrollbar sometimes". */
+      .hsp-box{background:var(--bg-card,#1a1a2e);border-radius:var(--radius,14px);padding:28px;max-width:820px;width:92%;
+        height:82vh;max-height:82vh;display:flex;flex-direction:column;border:1px solid var(--border,rgba(107,79,219,.3));
         box-shadow:0 20px 60px rgba(0,0,0,.5);}
-      .hsp-title{color:#e0e0e0;font-size:20px;font-weight:700;margin-bottom:2px;flex-shrink:0}
-      .hsp-sub{color:#888;font-size:13px;margin-bottom:14px;flex-shrink:0}
-      .hsp-scroll{flex:1;overflow-y:auto;padding-right:4px;margin-right:-4px;min-height:0}
+      .hsp-title{color:var(--text-primary,#e0e0e0);font-size:20px;font-weight:700;margin-bottom:2px;flex-shrink:0}
+      .hsp-sub{color:var(--text-secondary,#888);font-size:13px;margin-bottom:14px;flex-shrink:0}
+      .hsp-scroll{flex:1 1 auto;overflow-y:auto;padding-right:6px;margin-right:-6px;min-height:9rem;
+        scrollbar-width:auto;scrollbar-color:var(--accent,#6b4fdb) transparent}
+      .hsp-scroll::-webkit-scrollbar{width:10px}
+      .hsp-scroll::-webkit-scrollbar-thumb{background:var(--accent,#6b4fdb);border-radius:5px;opacity:.75}
       .hsp-sec{margin-bottom:14px}
-      .hsp-sec-title{color:#aaa;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;
+      .hsp-sec-title{color:var(--text-muted,#aaa);font-size:11px;text-transform:uppercase;letter-spacing:1.2px;
         margin-bottom:8px;font-weight:700}
       .hsp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px}
-      .hsp-src{background:#16213e;border-radius:8px;padding:8px;cursor:pointer;
+      .hsp-src{background:var(--bg-tertiary,#16213e);border-radius:8px;padding:8px;cursor:pointer;
         border:2px solid transparent;transition:border-color .2s,transform .15s}
-      .hsp-src:hover{border-color:rgba(107,79,219,.5);transform:translateY(-1px)}
-      .hsp-src.sel{border-color:#6b4fdb}
+      .hsp-src:hover{border-color:var(--accent-glow,rgba(107,79,219,.5));transform:translateY(-1px)}
+      .hsp-src.sel{border-color:var(--accent,#6b4fdb)}
       .hsp-src img{width:100%;border-radius:4px;margin-bottom:6px;aspect-ratio:16/9;
-        object-fit:cover;background:#0d0d1a}
+        object-fit:cover;background:var(--bg-input,#0d0d1a)}
       .hsp-src .hsp-thumb-ph{width:100%;border-radius:4px;margin-bottom:6px;aspect-ratio:16/9;
-        background:linear-gradient(135deg,#0d0d1a,#1a1a2e);display:flex;align-items:center;
-        justify-content:center;color:#777;font-size:11px;letter-spacing:.3px}
-      .hsp-src-name{color:#ccc;font-size:12px;text-align:center;white-space:nowrap;
+        background:linear-gradient(135deg,var(--bg-input,#0d0d1a),var(--bg-primary,#1a1a2e));display:flex;align-items:center;
+        justify-content:center;color:var(--text-muted,#777);font-size:11px;letter-spacing:.3px}
+      .hsp-src-name{color:var(--text-primary,#ccc);font-size:12px;text-align:center;white-space:nowrap;
         overflow:hidden;text-overflow:ellipsis}
-      .hsp-audio{padding-top:14px;border-top:1px solid #2a2a4a;flex-shrink:0;margin-top:10px}
+      .hsp-audio{padding-top:14px;border-top:1px solid var(--border,#2a2a4a);flex:0 1 auto;margin-top:10px;
+        max-height:30vh;overflow-y:auto}
       .hsp-apps{display:flex;flex-wrap:wrap;gap:8px}
-      .hsp-app{background:#16213e;border-radius:6px;padding:8px 14px;cursor:pointer;
+      .hsp-app{background:var(--bg-tertiary,#16213e);border-radius:6px;padding:8px 14px;cursor:pointer;
         border:2px solid transparent;transition:border-color .2s;display:flex;
-        align-items:center;gap:8px;color:#ccc;font-size:13px}
-      .hsp-app:hover{border-color:rgba(107,79,219,.5)}
-      .hsp-app.sel{border-color:#6b4fdb}
+        align-items:center;gap:8px;color:var(--text-primary,#ccc);font-size:13px}
+      .hsp-app:hover{border-color:var(--accent-glow,rgba(107,79,219,.5))}
+      .hsp-app.sel{border-color:var(--accent,#6b4fdb)}
       .hsp-app .ico{width:20px;height:20px}
       .hsp-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;flex-shrink:0}
       .hsp-btn{padding:8px 22px;border-radius:6px;border:none;font-size:14px;cursor:pointer;font-weight:600}
-      .hsp-cancel{background:#333;color:#ccc}.hsp-cancel:hover{background:#444}
-      .hsp-share{background:#6b4fdb;color:#fff}.hsp-share:hover{background:#7b5fe9}
+      /* Scoped: the server picker's global .hsp-cancel rule (display:block;
+         width:100%) otherwise stretches this Cancel across the row. */
+      #haven-screen-picker .hsp-cancel{display:inline-block;width:auto;margin-top:0;background:var(--bg-hover,#333);color:var(--text-secondary,#ccc)}
+      #haven-screen-picker .hsp-cancel:hover{background:var(--bg-active,#444)}
+      .hsp-share{background:var(--accent,#6b4fdb);color:var(--accent-text,#fff)}.hsp-share:hover{background:var(--accent-hover,#7b5fe9)}
       .hsp-share:disabled{opacity:.45;cursor:not-allowed}
-      .hsp-none{color:#666;font-size:12px;font-style:italic;padding:8px}
+      .hsp-none{color:var(--text-muted,#666);font-size:12px;font-style:italic;padding:8px}
     </style>
 
     <div class="hsp-box">

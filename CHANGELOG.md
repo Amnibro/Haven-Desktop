@@ -1,5 +1,13 @@
 # Haven Desktop Changelog
 
+## Unreleased
+
+### Fixed
+- **Push-to-talk "Hold" spam-toggled mute while the key was held (Windows, NumLock).** Any ordinary key went through Electron's `globalShortcut`, which has no key-up and re-fires on OS auto-repeat, and the hold branch sent the toggle event anyway. Single keys uiohook knows (NumLock, F13, Space, letters, digits, numpad) now go through uiohook like the bare modifiers, with real press and release and auto-repeat suppressed. Combos that still land on `globalShortcut` emulate hold: talk on the first press, release 350 ms after the repeats stop. Reported by Dispencer2.
+- **Haven Desktop's own window can be screen-shared.** `desktopCapturer` never lists windows of the calling process, so the app's window is added from `getMediaSourceId()` with a live thumbnail. Useful when walking someone through the app. Expect the hall-of-mirrors preview; that is inherent. Reported by Dispencer2.
+- **The screen-share picker sometimes had no scroll bar for Application Windows.** The scroll pane was `flex: 1` next to non-shrinking siblings inside a `max-height` box, so a tall audio-app row could squeeze it to nothing; closing and reopening happened to land on a shorter row. The box now has a definite height, the list keeps a minimum height, the audio row scrolls on its own past 30vh, and the scrollbar is visible. Reported by Dispencer2.
+- **The screen-share picker follows the app theme.** It is an overlay inside the Haven page, but every colour was hardcoded to an old palette. It now uses the theme variables (`--bg-card`, `--accent`, `--text-primary`, ...) with the old values as fallbacks, so it matches Settings and switches live with the theme. Its Cancel button no longer inherits the server picker's full-width rule. Reported by Dispencer2.
+
 ## v1.4.30
 
 ### Added
