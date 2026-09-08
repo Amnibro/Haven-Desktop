@@ -65,8 +65,17 @@
       invoke('theme_colors', { theme, bg, accent }).catch(() => {});
     } catch {}
   }
-  new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
-  window.addEventListener('DOMContentLoaded', syncTheme);
+  // Init scripts run before the document has a root; observing null throws
+  // and would abort the whole bridge (no havenDesktop, server switches leak
+  // to the system browser), so attach once the root exists.
+  function watchTheme() {
+    const root = document.documentElement;
+    if (!root) return false;
+    new MutationObserver(syncTheme).observe(root, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
+    syncTheme();
+    return true;
+  }
+  if (!watchTheme()) window.addEventListener('DOMContentLoaded', watchTheme, { once: true });
   window.addEventListener('load', () => { syncTheme(); setTimeout(syncTheme, 1500); });
   window.addEventListener('storage', syncTheme);
 

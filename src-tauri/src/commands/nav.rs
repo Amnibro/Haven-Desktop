@@ -61,8 +61,18 @@ pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
         .values()
         .flat_map(|set| set.iter().cloned())
         .collect();
+    // Servers the user has visited (serverHistory) count too, so a redirect
+    // on the way into one of them never bounces to the system browser.
+    let history: Vec<String> = state::get_value(app, "serverHistory")
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|h| h.get("url").and_then(|u| u.as_str()).map(String::from))
+        .collect();
     if active.as_deref().map(|a| same_origin(url, a)).unwrap_or(false)
         || known.iter().any(|k| same_origin(url, k))
+        || history.iter().any(|k| same_origin(url, k))
         || EMBED_ORIGINS.iter().any(|e| same_origin(url, e))
     {
         return true;
