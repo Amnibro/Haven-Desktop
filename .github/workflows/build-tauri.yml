@@ -90,8 +90,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then TAG="${GITHUB_REF_NAME}"; else TAG="v2.0.0-tauri"; fi
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          # Branch pushes publish to the release of the version in tauri.conf.json,
+          # so bumping the version is what moves testers and the updater forward.
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then TAG="${GITHUB_REF_NAME}"; else TAG="v${VERSION}-tauri"; fi
           # download-artifact keeps each artifact's folder layout (nsis/ is flat,
           # the Linux one has appimage/ and deb/), so locate files instead of globbing.
           EXE_PATH=$(find dist -name '*-setup.exe' | head -1)
