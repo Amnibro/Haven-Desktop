@@ -23,7 +23,8 @@
         "decorations": false,
         "center": true,
         "visible": true,
-        "backgroundColor": "#0d0d1a"
+        "backgroundColor": "#0d0d1a",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --ignore-certificate-errors"
       }
     ],
     "security": {

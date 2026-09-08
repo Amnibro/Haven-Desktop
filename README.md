@@ -17,6 +17,18 @@ This is a **Tauri 2** port of [ancsemi/Haven-Desktop](https://github.com/ancsemi
 | **Desktop prefs** | Language, minimize-to-tray, shortcuts, server history |
 | **Injected bridge** | Haven web UI gets `window.havenDesktop` with the same surface as the Electron app |
 
+## Self-signed certificates and platform status
+
+Haven servers generate a self-signed certificate by default, so the client has to accept one or the app shows a browser error page.
+
+| Platform | Self-signed HTTPS | Audio capture | Status |
+|---|---|---|---|
+| Windows | Accepted (`--ignore-certificate-errors` on the WebView2 process, same reach as the Electron app's certificate handler) | WASAPI | Built, installed and tested on Windows 11 |
+| Linux | Accepted (WebKitGTK TLS policy set to ignore on both windows) | PulseAudio | Compiles in CI config; the TLS path is untested on a real desktop |
+| macOS | Rejected (wry exposes no WKWebView hook); use a trusted certificate or plain http | none (null capture) | Untested |
+
+Navigation stays on the connected server and the known embed origins (YouTube, SoundCloud, Spotify, Turnstile); any other link opens in the system browser. A second launch focuses the running window instead of starting another copy. The main window remembers its size.
+
 ## Prerequisites
 
 - **Node.js** 18+

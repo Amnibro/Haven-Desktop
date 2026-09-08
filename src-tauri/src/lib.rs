@@ -11,6 +11,18 @@ use tauri_plugin_store::StoreExt;
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // A second launch (taskbar pin, Start menu) focuses the running app
+            // instead of booting a second copy, like Electron's requestSingleInstanceLock.
+            for label in ["main", "welcome"] {
+                if let Some(win) = app.get_webview_window(label) {
+                    let _ = win.show();
+                    let _ = win.unminimize();
+                    let _ = win.set_focus();
+                    break;
+                }
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -77,6 +89,9 @@ pub fn run() {
             state::ensure_defaults(app.handle())?;
             state::refresh_locale(app.handle())?;
             tray::setup_tray(app.handle())?;
+            if let Some(welcome) = app.get_webview_window("welcome") {
+                commands::accept_self_signed(&welcome);
+            }
 
             // Auto-open remembered server if skipWelcome is set
             let prefs = state::get_user_prefs(app.handle())?;
@@ -98,6 +113,22 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // Persist the main window size so the next launch reopens at it
+            // (the Electron app saved windowBounds; the store key was read but never written).
+            if window.label() == "main" {
+                if let tauri::WindowEvent::Resized(_) = event {
+                    if let (Ok(size), Ok(scale)) = (window.inner_size(), window.scale_factor()) {
+                        let (w, h) = ((size.width as f64 / scale) as u64, (size.height as f64 / scale) as u64);
+                        if w >= 800 && h >= 600 && !window.is_maximized().unwrap_or(false) {
+                            let _ = state::set_value(
+                                window.app_handle(),
+                                "windowBounds",
+                                serde_json::json!({ "width": w, "height": h }),
+                            );
+                        }
+                    }
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     if let Ok(minimize) = state::get_bool(window.app_handle(), "minimizeToTray") {

@@ -5,6 +5,74 @@ use url::Url;
 
 const INJECT_SCRIPT: &str = include_str!("../../inject/app-bridge.js");
 
+/// Haven servers ship a self-signed certificate by default. The Electron app
+/// accepted every certificate (certificate-error + setCertificateVerifyProc);
+/// WebView2 has no per-request hook, so the flag goes on the browser process.
+/// Must match `additionalBrowserArgs` on the welcome window in tauri.conf.json,
+/// because WebView2 only honours the args of the first webview it creates.
+#[cfg(windows)]
+pub const BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --ignore-certificate-errors";
+
+/// Embed origins the Haven web UI loads in iframes / navigations.
+const EMBED_ORIGINS: [&str; 5] = [
+    "https://w.soundcloud.com",
+    "https://open.spotify.com",
+    "https://www.youtube.com",
+    "https://www.youtube-nocookie.com",
+    "https://challenges.cloudflare.com",
+];
+
+/// Linux counterpart of `--ignore-certificate-errors`: WebKitGTK rejects
+/// self-signed certificates unless the web context's TLS policy says otherwise.
+/// macOS (WKWebView) has no equivalent hook in wry; a self-signed server there
+/// needs a trusted cert or plain http.
+pub fn accept_self_signed(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    {
+        use webkit2gtk::{TLSErrorsPolicy, WebContextExt, WebViewExt};
+        let _ = window.with_webview(|w| {
+            if let Some(ctx) = w.inner().web_context() {
+                ctx.set_tls_errors_policy(TLSErrorsPolicy::Ignore);
+            }
+        });
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = window;
+}
+
+fn same_origin(url: &Url, server: &str) -> bool {
+    Url::parse(server)
+        .map(|s| s.origin() == url.origin())
+        .unwrap_or(false)
+}
+
+/// Keep the main webview on the active Haven server (or a known embed);
+/// anything else opens in the system browser, like the Electron `will-navigate`.
+pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
+    if url.scheme() == "tauri" || url.host_str() == Some("tauri.localhost") {
+        return true;
+    }
+    let state = app.state::<AppState>();
+    let active = state.active_server_url.lock().clone();
+    let known: Vec<String> = state
+        .known_server_urls
+        .lock()
+        .values()
+        .flat_map(|set| set.iter().cloned())
+        .collect();
+    if active.as_deref().map(|a| same_origin(url, a)).unwrap_or(false)
+        || known.iter().any(|k| same_origin(url, k))
+        || EMBED_ORIGINS.iter().any(|e| same_origin(url, e))
+    {
+        return true;
+    }
+    if url.scheme() == "http" || url.scheme() == "https" {
+        let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+    }
+    false
+}
+
 #[tauri::command]
 pub fn get_inject_script() -> String {
     INJECT_SCRIPT.to_string()
@@ -59,14 +127,22 @@ pub fn open_app_window(app: &AppHandle, server_url: &str) -> Result<(), String> 
         let _ = existing.show();
         let _ = existing.set_focus();
     } else {
-        WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
+        let guard = app.clone();
+        let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
             .title("Haven")
             .inner_size(width, height)
             .min_inner_size(800.0, 600.0)
             .initialization_script(INJECT_SCRIPT)
-            .focused(true)
-            .build()
-            .map_err(|e| e.to_string())?;
+            .on_navigation(move |url| allow_navigation(&guard, url))
+            // Electron: frame: true + backgroundColor '#0d0d1a' under a dark theme,
+            // so the native title bar matches Haven instead of a white strip.
+            .theme(Some(tauri::Theme::Dark))
+            .background_color(tauri::webview::Color(13, 13, 26, 255))
+            .focused(true);
+        #[cfg(windows)]
+        let builder = builder.additional_browser_args(BROWSER_ARGS);
+        let main = builder.build().map_err(|e| e.to_string())?;
+        accept_self_signed(&main);
     }
 
     if let Some(welcome) = app.get_webview_window("welcome") {
