@@ -1,7 +1,10 @@
 use crate::state;
 use serde_json::{json, Value};
-use tauri::AppHandle;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{AppHandle, Emitter};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+static PTT_DOWN: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub fn shortcuts_get(app: AppHandle) -> Result<Value, String> {
@@ -26,6 +29,8 @@ pub fn shortcuts_register(app: AppHandle, updates: Value) -> Result<Value, Strin
 
     // Best-effort: unregister all then register known shortcuts.
     let _ = app.global_shortcut().unregister_all();
+    PTT_DOWN.store(false, Ordering::SeqCst);
+    let ptt_mode = cfg.get("pttMode").and_then(|v| v.as_str()).map(|m| if m == "toggle" { "toggle" } else { "hold" }).unwrap_or("hold").to_string();
     let mut result = serde_json::Map::new();
     for key in ["mute", "deafen", "ptt"] {
         let accel = cfg.get(key).and_then(|v| v.as_str()).unwrap_or("");
@@ -35,8 +40,25 @@ pub fn shortcuts_register(app: AppHandle, updates: Value) -> Result<Value, Strin
         }
         match accel.parse::<Shortcut>() {
             Ok(shortcut) => {
-                let ok = app.global_shortcut().on_shortcut(shortcut, move |_app, _s, _e| {
-                    // Events are also emitted for the inject bridge to consume.
+                // The handler was empty, so mute, deafen and push-to-talk did
+                // nothing in the Tauri build. The plugin reports press and
+                // release, which is exactly what hold-mode PTT needs (the
+                // Electron app has to emulate it for combos). The bridge in
+                // app-bridge.js listens for these names.
+                let key_name = key.to_string();
+                let hold = key == "ptt" && ptt_mode == "hold";
+                let ok = app.global_shortcut().on_shortcut(shortcut, move |app, _s, e| {
+                    let pressed = e.state() == ShortcutState::Pressed;
+                    match key_name.as_str() {
+                        "mute" => { if pressed { let _ = app.emit("voice:mute-toggle", ()); } }
+                        "deafen" => { if pressed { let _ = app.emit("voice:deafen-toggle", ()); } }
+                        _ if hold => {
+                            // OS auto-repeat can fire Pressed again while held; only the first one talks.
+                            if pressed && !PTT_DOWN.swap(true, Ordering::SeqCst) { let _ = app.emit("voice:ptt-down", ()); }
+                            if !pressed && PTT_DOWN.swap(false, Ordering::SeqCst) { let _ = app.emit("voice:ptt-up", ()); }
+                        }
+                        _ => { if pressed { let _ = app.emit("voice:ptt-toggle", ()); } }
+                    }
                 }).is_ok();
                 result.insert(
                     key.into(),

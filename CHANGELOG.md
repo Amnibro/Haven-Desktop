@@ -2,6 +2,15 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.2.0-tauri (2026-09-08) - level with Electron 1.4.30 + Haven-Desktop PR #52
+
+### Fixed
+- **Mute, deafen and push-to-talk shortcuts did nothing.** The global shortcut handler was an empty closure. It now emits the same events the Electron preload sends (`voice:mute-toggle`, `voice:deafen-toggle`, `voice:ptt-toggle`, `voice:ptt-down` / `voice:ptt-up`), and because the shortcut plugin reports press and release, hold-mode push-to-talk is real here, with OS auto-repeat ignored while the key stays down. Dispencer2's "hold spam-toggles" cannot happen on this build.
+
+### Notes
+- Screen sharing uses WebView2's own source picker on Windows, which already lists Haven's window, scrolls and follows the system theme, so the three Electron picker fixes in Haven-Desktop PR #52 have no Tauri counterpart.
+- The web-side forum, NSFW, settings search and create-form changes (ancsemi/Haven PR #5595) arrive through the server, nothing to port.
+
 ## v2.1.0-tauri (2026-09-08) - level with Electron 1.4.30
 
 ### Added
