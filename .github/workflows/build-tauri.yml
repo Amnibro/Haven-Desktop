@@ -92,17 +92,17 @@ jobs:
           set -euo pipefail
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then TAG="${GITHUB_REF_NAME}"; else TAG="v2.0.0-tauri"; fi
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          EXE=$(basename "$(ls dist/haven-desktop-windows/*-setup.exe | head -1)")
-          APPIMAGE=$(basename "$(ls dist/haven-desktop-linux/*.AppImage | head -1)")
+          # download-artifact keeps each artifact's folder layout (nsis/ is flat,
+          # the Linux one has appimage/ and deb/), so locate files instead of globbing.
+          EXE_PATH=$(find dist -name '*-setup.exe' | head -1)
+          APPIMAGE_PATH=$(find dist -name '*.AppImage' | head -1)
           BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
-          node -e "
-            const fs=require('fs'); const enc=encodeURIComponent;
+          EXE_PATH="$EXE_PATH" APPIMAGE_PATH="$APPIMAGE_PATH" BASE="$BASE" VERSION="$VERSION" node -e "
+            const fs=require('fs'), path=require('path'); const enc=encodeURIComponent; const e=process.env;
+            const plat=(p)=>({ signature: fs.readFileSync(p+'.sig','utf8').trim(), url: e.BASE+'/'+enc(path.basename(p)) });
             fs.writeFileSync('dist/latest.json', JSON.stringify({
-              version: '$VERSION', notes: 'Haven Desktop (Tauri) $VERSION', pub_date: new Date().toISOString(),
-              platforms: {
-                'windows-x86_64': { signature: fs.readFileSync('dist/haven-desktop-windows/$EXE.sig','utf8').trim(), url: '$BASE/' + enc('$EXE') },
-                'linux-x86_64':   { signature: fs.readFileSync('dist/haven-desktop-linux/$APPIMAGE.sig','utf8').trim(), url: '$BASE/' + enc('$APPIMAGE') }
-              }
+              version: e.VERSION, notes: 'Haven Desktop (Tauri) '+e.VERSION, pub_date: new Date().toISOString(),
+              platforms: { 'windows-x86_64': plat(e.EXE_PATH), 'linux-x86_64': plat(e.APPIMAGE_PATH) }
             }, null, 2));"
           cat dist/latest.json
           TITLE="${TAG#v}"
@@ -110,6 +110,6 @@ jobs:
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Haven ${TITLE}" --notes "$NOTES" --latest
           fi
-          mapfile -t FILES < <(ls -1 dist/haven-desktop-windows/* dist/haven-desktop-linux/* dist/latest.json)
+          mapfile -t FILES < <(find dist -type f \( -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.sig' -o -name 'latest.json' \))
           gh release upload "$TAG" "${FILES[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Released: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
