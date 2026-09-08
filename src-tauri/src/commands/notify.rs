@@ -23,12 +23,10 @@ pub fn notify(app: AppHandle, opts: NotifyOpts) -> Result<bool, String> {
     }
     builder.show().map_err(|e| e.to_string())?;
 
-    if let Some(code) = opts.channel_code {
-        let _ = app.emit("notification-clicked", code);
-    }
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main;
-    }
+    // Desktop toasts through notify-rust carry no click callback, so there is
+    // nothing to emit here. Emitting "notification-clicked" on show made the
+    // web app switch channels every time a message arrived.
+    let _ = opts.channel_code;
     Ok(true)
 }
 
@@ -44,6 +42,12 @@ pub fn notification_badge(
     let badges = state.server_badges.lock().clone();
     let payload = json!({ "badges": badges, "names": {} });
     let _ = app.emit("server-badge-update", payload);
+    // Red dot on the taskbar icon while anything is unread (Electron's overlay icon).
+    if let Some(main) = app.get_webview_window("main") {
+        let any = badges.values().any(|v| *v);
+        let dot = tauri::image::Image::from_bytes(include_bytes!("../../icons/unread.png")).ok();
+        let _ = main.set_overlay_icon(if any { dot } else { None });
+    }
     Ok(())
 }
 

@@ -9,6 +9,34 @@ use state::AppState;
 use tauri::Manager;
 use tauri_plugin_store::StoreExt;
 
+/// Ask the GitHub release feed once at startup; on a newer build, offer to
+/// install it (signed with the key in ~/.tauri, verified against the pubkey
+/// in tauri.conf.json) and relaunch. Failures stay silent: offline is normal.
+fn check_for_update(app: tauri::AppHandle) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    use tauri_plugin_updater::UpdaterExt;
+    tauri::async_runtime::spawn(async move {
+        let Ok(updater) = app.updater() else { return };
+        let Ok(Some(update)) = updater.check().await else { return };
+        let msg = format!(
+            "Haven Desktop {} is available (you have {}). Install it now? Haven restarts when it is done.",
+            update.version, update.current_version
+        );
+        let yes = app
+            .dialog()
+            .message(msg)
+            .title("Update available")
+            .buttons(MessageDialogButtons::OkCancelCustom("Install".into(), "Later".into()))
+            .blocking_show();
+        if !yes {
+            return;
+        }
+        if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
+            app.restart();
+        }
+    });
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -23,6 +51,7 @@ pub fn run() {
                 }
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -89,6 +118,7 @@ pub fn run() {
             state::ensure_defaults(app.handle())?;
             state::refresh_locale(app.handle())?;
             tray::setup_tray(app.handle())?;
+            check_for_update(app.handle().clone());
             if let Some(welcome) = app.get_webview_window("welcome") {
                 commands::accept_self_signed(&welcome);
             }
