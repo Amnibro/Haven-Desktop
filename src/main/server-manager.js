@@ -83,7 +83,9 @@ class ServerManager {
     this._port = await this._findPort(3000);
 
     return new Promise(resolve => {
-      const env = { ...process.env, PORT: String(this._port) };
+      // HAVEN_DESKTOP tells server.js who hosts it (its admin update page
+      // uses it to word the restart instructions).
+      const env = { ...process.env, PORT: String(this._port), HAVEN_DESKTOP: require('electron').app.getVersion() };
 
       // Use system `node` (Electron's binary is not plain Node)
       const nodeCmd = process.platform === 'win32' ? 'node.exe' : 'node';
@@ -156,7 +158,11 @@ class ServerManager {
 
         if (intentional) return;      // stopServer() was called
 
-        if (code !== 0 && code !== null) {
+        // Any exit we did not ask for gets a restart, exit code 0 included:
+        // server.js exits 0 on purpose after Admin → Update so "the supervisor
+        // restarts us", and here we are the supervisor. Before this only
+        // crashes restarted, so an update left the app pointed at a dead server.
+        {
           const now = Date.now();
           const COOLDOWN_MS = 5000;
           if (now - (this._lastRestart || 0) < COOLDOWN_MS) {
@@ -164,7 +170,7 @@ class ServerManager {
             return;
           }
           this._lastRestart = now;
-          this._emitLog(`[Haven Desktop] Server exited with code ${code} — restarting in 2 s…\n`);
+          this._emitLog(`[Haven Desktop] Server exited (code ${code}${signal ? ', ' + signal : ''}) — restarting in 2 s…\n`);
           setTimeout(() => {
             if (!this._intentionalStop) {
               this.startServer(serverDir).catch(() => {});
