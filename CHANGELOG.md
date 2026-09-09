@@ -1,5 +1,10 @@
 # Haven Desktop Changelog
 
+## Unreleased
+
+### Fixed
+- **Hosted server was not restarted after Admin → Update.** server.js exits with code 0 after an update so its supervisor restarts it, but the desktop only restarted crashes, so the app sat on a dead server. Every exit we did not request now restarts the server (same 5 s loop guard). The server also gets `HAVEN_DESKTOP=<version>` in its environment so its update page can say who restarts it. Pairs with the Haven fix that stops "Update now" from launching the first-time installer on zip installs.
+
 ## v1.4.26
 
 ### Fixed
