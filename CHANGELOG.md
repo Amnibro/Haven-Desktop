@@ -1,5 +1,12 @@
 # Haven Desktop Changelog
 
+## Unreleased
+
+### Fixed
+- **Push to talk in hold mode works on ordinary keys and combos.** A hold-mode PTT bound to something like V or Ctrl+Space could only toggle, because the shortcut API Electron offers has no key release. Those bindings now go through the same input hook that already handled bare modifiers and mouse buttons, so the mic opens on press and closes on release. The right-hand Ctrl, Alt, Shift and Meta keys now count for a bare-modifier binding too. (Haven #5603)
+
+---
+
 ## v1.4.30
 
 ### Added

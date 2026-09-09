@@ -551,19 +551,75 @@ function _accelToUiohookKeycode(accel) {
   };
   // uiohook reports left/right modifiers as separate keycodes — return
   // both so we can match either. Stored as a [primary, alt] pair.
+  // uiohook names the right-hand keys *Right. The old *R names did not
+  // exist, so the right-hand modifier never counted as the binding.
   const altMap = {
-    'Ctrl':             K.CtrlR,
-    'Control':          K.CtrlR,
-    'CommandOrControl': process.platform === 'darwin' ? K.MetaR : K.CtrlR,
-    'Alt':              K.AltR,
-    'Shift':            K.ShiftR,
-    'Meta':             K.MetaR,
-    'Cmd':              K.MetaR,
-    'Super':            K.MetaR,
+    'Ctrl':             K.CtrlRight,
+    'Control':          K.CtrlRight,
+    'CommandOrControl': process.platform === 'darwin' ? K.MetaRight : K.CtrlRight,
+    'Alt':              K.AltRight,
+    'Shift':            K.ShiftRight,
+    'Meta':             K.MetaRight,
+    'Cmd':              K.MetaRight,
+    'Super':            K.MetaRight,
   };
   const primary = map[accel];
   if (primary == null) return null;
   return [primary, altMap[accel]].filter(v => v != null);
+}
+
+// Electron accelerator -> uiohook keycode plus the modifiers that must be
+// down, for a hold-mode PTT on an ordinary key. Bare modifiers and mouse
+// buttons keep their own path above; this covers "V", "F9", "Ctrl+Space",
+// "Shift+Alt+num0" and the like. Returns null for anything uiohook has no
+// code for, so the caller can fall back to globalShortcut. (#5603)
+const _UIOHOOK_KEY_NAMES = {
+  space: 'Space', tab: 'Tab', backspace: 'Backspace', delete: 'Delete', insert: 'Insert',
+  home: 'Home', end: 'End', pageup: 'PageUp', pagedown: 'PageDown',
+  up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight',
+  return: 'Enter', enter: 'Enter', esc: 'Escape', escape: 'Escape',
+  capslock: 'CapsLock', numlock: 'NumLock', scrolllock: 'ScrollLock', printscreen: 'PrintScreen',
+  plus: 'Equal', numadd: 'NumpadAdd', numsub: 'NumpadSubtract', nummult: 'NumpadMultiply',
+  numdiv: 'NumpadDivide', numdec: 'NumpadDecimal', numenter: 'NumpadEnter',
+  '`': 'Backquote', '-': 'Minus', '=': 'Equal', '[': 'BracketLeft', ']': 'BracketRight',
+  '\\': 'Backslash', ';': 'Semicolon', "'": 'Quote', ',': 'Comma', '.': 'Period', '/': 'Slash',
+};
+function _accelToUiohookCombo(accel) {
+  const u = tryLoadUiohook();
+  if (!u) return null;
+  const K = u.UiohookKey || {};
+  const parts = String(accel || '').split('+').map(p => p.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  const key = parts.pop();
+  const mods = { ctrl: false, alt: false, shift: false, meta: false };
+  for (const m of parts) {
+    switch (m) {
+      case 'CommandOrControl': case 'CmdOrCtrl':
+        if (process.platform === 'darwin') mods.meta = true; else mods.ctrl = true; break;
+      case 'Control': case 'Ctrl': mods.ctrl = true; break;
+      case 'Alt': case 'Option': mods.alt = true; break;
+      case 'Shift': mods.shift = true; break;
+      case 'Meta': case 'Cmd': case 'Command': case 'Super': mods.meta = true; break;
+      default: return null;
+    }
+  }
+  let name = null;
+  if (/^[a-z]$/i.test(key)) name = key.toUpperCase();
+  else if (/^[0-9]$/.test(key)) name = key;
+  else if (/^F([1-9]|1[0-9]|2[0-4])$/i.test(key)) name = 'F' + key.slice(1);
+  else if (/^num[0-9]$/i.test(key)) name = 'Numpad' + key.slice(3);
+  else name = _UIOHOOK_KEY_NAMES[key.toLowerCase()] || _UIOHOOK_KEY_NAMES[key] || null;
+  const code = name != null ? K[name] : undefined;
+  if (typeof code !== 'number') return null;
+  return { keycodes: [code], mods };
+}
+
+// Every modifier the binding names has to be down. Extra ones are fine, so
+// a plain V still opens the mic while Shift is held for sprinting in a game.
+function _uiohookModsDown(mods, e) {
+  if (!mods) return true;
+  return (!mods.ctrl || !!e.ctrlKey) && (!mods.alt || !!e.altKey)
+      && (!mods.shift || !!e.shiftKey) && (!mods.meta || !!e.metaKey);
 }
 
 function _accelToMouseButton(accel) {
@@ -587,6 +643,7 @@ function _ensureUiohookStarted() {
   u.uIOhook.on('keydown', (e) => {
     for (const [, binding] of _uiohookKeyBindings) {
       if (!binding.keycodes.includes(e.keycode)) continue;
+      if (!_uiohookModsDown(binding.mods, e)) continue;
       const stateKey = `k:${binding.event}`;
       if (binding.mode === 'hold') {
         if (_uiohookDownState.has(stateKey)) return; // ignore OS auto-repeat
@@ -682,6 +739,25 @@ function registerVoiceShortcuts() {
   for (const b of bindings) {
     if (!b.accel) continue;
 
+    // Hold mode on an ordinary key or combo. Electron's globalShortcut has no
+    // key-up, so a held V or Ctrl+Space could only ever toggle. With the input
+    // hook available the binding goes through it instead, which gives a real
+    // press and release. Anything it cannot map falls through to the
+    // toggle-only path below. (#5603)
+    if (b.mode === 'hold' && !_isUiohookAccel(b.accel) && tryLoadUiohook()) {
+      const combo = _accelToUiohookCombo(b.accel);
+      if (combo) {
+        needUiohook = true;
+        _uiohookKeyBindings.set(b.accel + '|' + b.event, {
+          keycodes: combo.keycodes,
+          mods:     combo.mods,
+          event:    b.event,
+          mode:     b.mode,
+        });
+        continue;
+      }
+    }
+
     if (_isUiohookAccel(b.accel)) {
       needUiohook = true;
       const mouseBtn = _accelToMouseButton(b.accel);
@@ -704,11 +780,9 @@ function registerVoiceShortcuts() {
       continue;
     }
 
-    // Ordinary accelerator → Electron globalShortcut.
-    // Toggle-only — Electron globalShortcut doesn't expose key-up,
-    // so even if PTT is in hold mode here we degrade to toggle for
-    // keyboard combos (the recorder UI labels this trade-off in the
-    // toast it shows on registration failure).
+    // Ordinary accelerator through Electron globalShortcut. Toggle-only, since
+    // it has no key-up. A hold-mode PTT only lands here when the input hook is
+    // unavailable or could not map the key, and then it degrades to toggle.
     try {
       globalShortcut.register(b.accel, () => {
         const channel = b.event === 'voice:ptt'
