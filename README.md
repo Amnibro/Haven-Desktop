@@ -29,6 +29,16 @@ Haven servers generate a self-signed certificate by default, so the client has t
 
 Every push builds a signed Windows installer and a signed Linux AppImage plus deb, and publishes them with `latest.json` to the GitHub release. The app checks that feed once at startup and offers to install a newer build. Navigation stays on the connected server and the known embed origins (YouTube, SoundCloud, Spotify, Turnstile); any other link opens in the system browser. A second launch focuses the running window instead of starting another copy. The main window remembers its size.
 
+## Install on Linux
+
+```bash
+./install-linux.sh                       # AppImage from this folder, ~/Downloads, or the latest release
+./install-linux.sh --bare path/to/haven-desktop   # plain binary against the system WebKitGTK
+./install-linux.sh --uninstall
+```
+
+The AppImage carries its own WebKitGTK and AppIndicator libraries. A bare binary needs the distro's `webkit2gtk-4.1`, and `libayatana-appindicator` for the tray icon; without the latter the app still runs, just without a tray, and the script prints the exact package command.
+
 ## Prerequisites
 
 - **Node.js** 18+

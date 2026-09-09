@@ -2,6 +2,14 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## Unreleased
+
+### Fixed
+- **Linux crashed on launch (SIGABRT) when no AppIndicator library was installed.** The tray was declared in `tauri.conf.json`, so Tauri built it before our setup ran, and `libappindicator-sys` panics when it cannot `dlopen` `libayatana-appindicator3` or `libappindicator3`; with `panic = "abort"` that killed the process before any window appeared. The AppImage and deb bundle the library, but a bare `haven-desktop` binary on a distro without it (Arch without `libayatana-appindicator`) never started. The tray is now created in code only after probing for the library; without it the app runs tray-less, logs one line saying so, and closing the window quits instead of hiding into a tray that isn't there. `desktop_get_prefs` reports `trayAvailable` so the settings UI can grey out minimize-to-tray.
+
+### Added
+- **`install-linux.sh`**: installs the AppImage (local file, `~/Downloads`, or the latest GitHub release) or a bare binary with `--bare`, writes the menu entry and icons, falls back to extracting the AppImage where FUSE 2 is missing, and prints the distro's install command for anything a bare binary is missing. `--uninstall` reverses it.
+
 ## v2.2.0-tauri (2026-09-08) - level with Electron 1.4.30 + Haven-Desktop PR #52
 
 ### Fixed

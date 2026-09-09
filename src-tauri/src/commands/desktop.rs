@@ -8,6 +8,8 @@ pub fn desktop_get_prefs(app: AppHandle) -> Result<serde_json::Value, String> {
         "startOnLogin": state::get_bool(&app, "startOnLogin")?,
         "startHidden": state::get_bool(&app, "startHidden")?,
         "minimizeToTray": state::get_bool(&app, "minimizeToTray")?,
+        // False when the platform has no tray support, so the UI can grey the option out.
+        "trayAvailable": crate::tray::is_active(&app),
         "forceSDR": state::get_bool(&app, "forceSDR")?,
         "hideMenuBar": state::get_bool(&app, "hideMenuBar")?,
         "disableGpuVsync": state::get_bool(&app, "disableGpuVsync")?,
