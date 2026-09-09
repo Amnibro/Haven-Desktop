@@ -54,3 +54,6 @@ tauri-plugin-global-shortcut = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
+# Same crate libappindicator-sys uses; lets us probe for the tray library
+# before the tray crate does, because its own probe panics (and we abort).
+libloading = "0.7"

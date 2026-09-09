@@ -120,7 +120,14 @@ pub fn run() {
             let _ = app.store("haven-desktop.json")?;
             state::ensure_defaults(app.handle())?;
             state::refresh_locale(app.handle())?;
-            tray::setup_tray(app.handle())?;
+            if tray::is_supported() {
+                tray::setup_tray(app.handle())?;
+            } else {
+                eprintln!(
+                    "haven-desktop: no AppIndicator library found (libayatana-appindicator3 / libappindicator3); \
+                     running without a tray icon. Closing the window quits the app."
+                );
+            }
             {
                 let (bg, fg) = theme_icon::stored(app.handle());
                 theme_icon::apply(app.handle(), bg, fg);
@@ -177,7 +184,9 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     if let Ok(minimize) = state::get_bool(window.app_handle(), "minimizeToTray") {
-                        if minimize {
+                        // Without a tray there is nothing to restore the window from, so
+                        // honour the close instead of hiding the app where it can't be found.
+                        if minimize && tray::is_active(window.app_handle()) {
                             api.prevent_close();
                             let _ = window.hide();
                             if let Some(w) = window.app_handle().get_webview_window("main") { lowmem::set_low_memory(&w, true); }

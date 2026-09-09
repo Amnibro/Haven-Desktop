@@ -1654,6 +1654,7 @@ dependencies = [
  "base64 0.22.1",
  "cc",
  "dirs",
+ "libloading",
  "once_cell",
  "parking_lot",
  "pkg-config",
