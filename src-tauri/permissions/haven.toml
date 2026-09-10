@@ -43,6 +43,7 @@ commands.allow = [
   "shortcuts_register",
   "clipboard_write_text",
   "clipboard_write_image",
+  "save_image",
   "audio_is_supported",
   "audio_get_apps",
   "audio_start_capture",

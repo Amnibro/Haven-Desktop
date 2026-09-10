@@ -2,6 +2,15 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.3.0-tauri (2026-09-10)
+
+### Added
+- **Save Image uses a native save dialog.** WebView2 ignores `<a download>` on
+  a lot of http(s) media, so the bridge takes the image bytes and opens the
+  OS picker. Pair with a Haven server that calls `havenDesktop.saveImage`.
+- Forum feed and gallery tile sliders live on the server (Haven PR #5630).
+  Connect to a server that has that build and they show up here too.
+
 ## v2.2.0-tauri (2026-09-08) - level with Electron 1.4.30 + Haven-Desktop PR #52
 
 ### Fixed

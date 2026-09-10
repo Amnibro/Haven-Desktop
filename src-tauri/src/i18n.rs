@@ -59,6 +59,7 @@ const EN: &[(&str, &str)] = &[
     ("server.log.crashLoop", "Server is crash-looping; not restarting again."),
     ("server.log.restarting", "Server exited with code {code}; restarting..."),
     ("dialog.selectServerDirectory", "Select Haven server directory"),
+    ("dialog.saveImage", "Save image"),
     ("dialog.ok", "OK"),
     ("dialog.cancel", "Cancel"),
     ("dialog.defaultValue", "Default: {value}"),

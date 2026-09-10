@@ -87,6 +87,22 @@
     }, { once: true });
   }
 
+  // Braid hides the debug status bar; desktop still reserved 35px for it.
+  function injectBraidDesktopCss() {
+    if (document.getElementById('haven-desktop-braid-gap')) return;
+    const el = document.createElement('style');
+    el.id = 'haven-desktop-braid-gap';
+    el.textContent = 'html[data-braid-layout="1"][data-desktop-app]{--thread-footer-offset:0px}'
+      + 'html[data-braid-layout="1"][data-desktop-app] .status-bar,'
+      + 'html[data-braid-layout="1"][data-desktop-app] #status-bar{display:none!important;height:0!important;min-height:0!important;padding:0!important;border:0!important;overflow:hidden!important}'
+      + 'html[data-braid-layout="1"].braid-status-open[data-desktop-app] .status-bar,'
+      + 'html[data-braid-layout="1"].braid-status-open[data-desktop-app] #status-bar{display:flex!important;height:auto!important;min-height:1.75rem!important;padding:.3125rem 1rem!important;overflow:visible!important}'
+      + 'html[data-braid-layout="1"] #app-body{flex:1 1 auto!important;height:auto!important;min-height:0}';
+    (document.head || document.documentElement).appendChild(el);
+  }
+  if (document.head) injectBraidDesktopCss();
+  else window.addEventListener('DOMContentLoaded', injectBraidDesktopCss, { once: true });
+
   // ── i18n (passthrough until state loads) ─────────────────
   let i18nState = {
     preference: 'auto',
@@ -394,6 +410,8 @@
 
     clipboardWriteImage: (payload) => invoke('clipboard_write_image', { payload }),
     clipboardWriteText: (text) => invoke('clipboard_write_text', { text }),
+    saveImage: ({ bytes, filename } = {}) =>
+      invoke('save_image', { payload: bytes || '', filename: filename || 'haven-image.png' }),
 
     getServerHistory: () => invoke('server_history_get'),
     addServerHistory: (url, name) => invoke('server_history_add', { url, name }),
