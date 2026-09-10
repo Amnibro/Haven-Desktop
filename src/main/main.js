@@ -551,44 +551,75 @@ function _accelToUiohookKeycode(accel) {
   };
   // uiohook reports left/right modifiers as separate keycodes — return
   // both so we can match either. Stored as a [primary, alt] pair.
+  // uiohook names the right-hand keys *Right. The old *R names did not
+  // exist, so the right-hand modifier never counted as the binding.
   const altMap = {
-    'Ctrl':             K.CtrlR,
-    'Control':          K.CtrlR,
-    'CommandOrControl': process.platform === 'darwin' ? K.MetaR : K.CtrlR,
-    'Alt':              K.AltR,
-    'Shift':            K.ShiftR,
-    'Meta':             K.MetaR,
-    'Cmd':              K.MetaR,
-    'Super':            K.MetaR,
+    'Ctrl':             K.CtrlRight,
+    'Control':          K.CtrlRight,
+    'CommandOrControl': process.platform === 'darwin' ? K.MetaRight : K.CtrlRight,
+    'Alt':              K.AltRight,
+    'Shift':            K.ShiftRight,
+    'Meta':             K.MetaRight,
+    'Cmd':              K.MetaRight,
+    'Super':            K.MetaRight,
   };
   const primary = map[accel];
-  if (primary == null) {
-    const generic = _genericUiohookKeycode(K, accel);
-    return generic == null ? null : [generic];
-  }
+  if (primary == null) return null;
   return [primary, altMap[accel]].filter(v => v != null);
 }
 
-// Electron accelerator name -> uiohook UiohookKey name for a single key.
-// Hold-mode push-to-talk needs key-up, which globalShortcut never delivers,
-// so a plain key like NumLock has to go through uiohook like the bare
-// modifiers do. Combos (Ctrl+F5) stay on globalShortcut.
-function _genericUiohookKeycode(K, accel) {
-  if (!accel || accel.includes('+')) return null;
-  const alias = {
-    Numlock: 'NumLock', Capslock: 'CapsLock', Scrolllock: 'ScrollLock', Esc: 'Escape',
-    Return: 'Enter', Up: 'ArrowUp', Down: 'ArrowDown', Left: 'ArrowLeft', Right: 'ArrowRight',
-    Plus: 'Equal', numadd: 'NumpadAdd', numsub: 'NumpadSubtract', nummult: 'NumpadMultiply',
-    numdiv: 'NumpadDivide', numdec: 'NumpadDecimal', ';': 'Semicolon', '`': 'Backquote',
-    '-': 'Minus', '=': 'Equal', '[': 'BracketLeft', ']': 'BracketRight', '\\': 'Backslash',
-    ',': 'Comma', '.': 'Period', '/': 'Slash', "'": 'Quote', ' ': 'Space',
-  };
-  let name = alias[accel] || accel;
-  const num = /^num(\d)$/i.exec(name);
-  if (num) name = `Numpad${num[1]}`;
-  if (/^[a-z]$/.test(name)) name = name.toUpperCase();
-  const code = K[name];
-  return typeof code === 'number' ? code : null;
+// Electron accelerator -> uiohook keycode plus the modifiers that must be
+// down, for a hold-mode PTT on an ordinary key. Bare modifiers and mouse
+// buttons keep their own path above; this covers "V", "F9", "Ctrl+Space",
+// "Shift+Alt+num0" and the like. Returns null for anything uiohook has no
+// code for, so the caller can fall back to globalShortcut. (#5603)
+const _UIOHOOK_KEY_NAMES = {
+  space: 'Space', tab: 'Tab', backspace: 'Backspace', delete: 'Delete', insert: 'Insert',
+  home: 'Home', end: 'End', pageup: 'PageUp', pagedown: 'PageDown',
+  up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight',
+  return: 'Enter', enter: 'Enter', esc: 'Escape', escape: 'Escape',
+  capslock: 'CapsLock', numlock: 'NumLock', scrolllock: 'ScrollLock', printscreen: 'PrintScreen',
+  plus: 'Equal', numadd: 'NumpadAdd', numsub: 'NumpadSubtract', nummult: 'NumpadMultiply',
+  numdiv: 'NumpadDivide', numdec: 'NumpadDecimal', numenter: 'NumpadEnter',
+  '`': 'Backquote', '-': 'Minus', '=': 'Equal', '[': 'BracketLeft', ']': 'BracketRight',
+  '\\': 'Backslash', ';': 'Semicolon', "'": 'Quote', ',': 'Comma', '.': 'Period', '/': 'Slash',
+};
+function _accelToUiohookCombo(accel) {
+  const u = tryLoadUiohook();
+  if (!u) return null;
+  const K = u.UiohookKey || {};
+  const parts = String(accel || '').split('+').map(p => p.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  const key = parts.pop();
+  const mods = { ctrl: false, alt: false, shift: false, meta: false };
+  for (const m of parts) {
+    switch (m) {
+      case 'CommandOrControl': case 'CmdOrCtrl':
+        if (process.platform === 'darwin') mods.meta = true; else mods.ctrl = true; break;
+      case 'Control': case 'Ctrl': mods.ctrl = true; break;
+      case 'Alt': case 'Option': mods.alt = true; break;
+      case 'Shift': mods.shift = true; break;
+      case 'Meta': case 'Cmd': case 'Command': case 'Super': mods.meta = true; break;
+      default: return null;
+    }
+  }
+  let name = null;
+  if (/^[a-z]$/i.test(key)) name = key.toUpperCase();
+  else if (/^[0-9]$/.test(key)) name = key;
+  else if (/^F([1-9]|1[0-9]|2[0-4])$/i.test(key)) name = 'F' + key.slice(1);
+  else if (/^num[0-9]$/i.test(key)) name = 'Numpad' + key.slice(3);
+  else name = _UIOHOOK_KEY_NAMES[key.toLowerCase()] || _UIOHOOK_KEY_NAMES[key] || null;
+  const code = name != null ? K[name] : undefined;
+  if (typeof code !== 'number') return null;
+  return { keycodes: [code], mods };
+}
+
+// Every modifier the binding names has to be down. Extra ones are fine, so
+// a plain V still opens the mic while Shift is held for sprinting in a game.
+function _uiohookModsDown(mods, e) {
+  if (!mods) return true;
+  return (!mods.ctrl || !!e.ctrlKey) && (!mods.alt || !!e.altKey)
+      && (!mods.shift || !!e.shiftKey) && (!mods.meta || !!e.metaKey);
 }
 
 function _accelToMouseButton(accel) {
@@ -600,12 +631,10 @@ function _accelToMouseButton(accel) {
 
 let _gsPttTimer = null;
 
-function _isUiohookAccel(accel, holdMode = false) {
+function _isUiohookAccel(accel) {
   if (!accel) return false;
   if (/^Mouse\d+$/i.test(accel)) return true;
   if (['Shift', 'Alt', 'Control', 'Ctrl', 'CommandOrControl', 'Meta', 'Cmd', 'Super'].includes(accel)) return true;
-  // Hold needs key-up. Any single key uiohook knows goes through it.
-  if (holdMode && !accel.includes('+') && tryLoadUiohook() && _accelToUiohookKeycode(accel)) return true;
   return false;
 }
 
@@ -616,6 +645,7 @@ function _ensureUiohookStarted() {
   u.uIOhook.on('keydown', (e) => {
     for (const [, binding] of _uiohookKeyBindings) {
       if (!binding.keycodes.includes(e.keycode)) continue;
+      if (!_uiohookModsDown(binding.mods, e)) continue;
       const stateKey = `k:${binding.event}`;
       if (binding.mode === 'hold') {
         if (_uiohookDownState.has(stateKey)) return; // ignore OS auto-repeat
@@ -663,7 +693,7 @@ function _ensureUiohookStarted() {
   try {
     u.uIOhook.start();
     _uiohookStarted = true;
-    console.log('[Shortcuts] uiohook-napi started — bare modifiers, hold-mode keys and Mouse4/5 active');
+    console.log('[Shortcuts] uiohook-napi started — bare modifiers + Mouse4/5 active');
   } catch (err) {
     console.warn('[Shortcuts] uiohook-napi failed to start:', err.message);
     const hint = _uiohookInstallHint();
@@ -686,9 +716,8 @@ function _stopUiohookIfIdle() {
 
 function unregisterVoiceShortcuts() {
   const cfg = store.get('desktopShortcuts') || {};
-  const pttHold = cfg.pttMode !== 'toggle';
   ['mute', 'deafen', 'ptt'].forEach(k => {
-    try { if (cfg[k] && !_isUiohookAccel(cfg[k], k === 'ptt' && pttHold)) globalShortcut.unregister(cfg[k]); } catch {}
+    try { if (cfg[k] && !_isUiohookAccel(cfg[k])) globalShortcut.unregister(cfg[k]); } catch {}
   });
   if (_gsPttTimer) { clearTimeout(_gsPttTimer); _gsPttTimer = null; }
   _uiohookKeyBindings.clear();
@@ -713,7 +742,26 @@ function registerVoiceShortcuts() {
   for (const b of bindings) {
     if (!b.accel) continue;
 
-    if (_isUiohookAccel(b.accel, b.mode === 'hold')) {
+    // Hold mode on an ordinary key or combo. Electron's globalShortcut has no
+    // key-up, so a held V or Ctrl+Space could only ever toggle. With the input
+    // hook available the binding goes through it instead, which gives a real
+    // press and release. Anything it cannot map falls through to the
+    // toggle-only path below. (#5603)
+    if (b.mode === 'hold' && !_isUiohookAccel(b.accel) && tryLoadUiohook()) {
+      const combo = _accelToUiohookCombo(b.accel);
+      if (combo) {
+        needUiohook = true;
+        _uiohookKeyBindings.set(b.accel + '|' + b.event, {
+          keycodes: combo.keycodes,
+          mods:     combo.mods,
+          event:    b.event,
+          mode:     b.mode,
+        });
+        continue;
+      }
+    }
+
+    if (_isUiohookAccel(b.accel)) {
       needUiohook = true;
       const mouseBtn = _accelToMouseButton(b.accel);
       if (mouseBtn != null) {
@@ -735,12 +783,12 @@ function registerVoiceShortcuts() {
       continue;
     }
 
-    // Ordinary accelerator (a combo, or a key uiohook could not map) →
-    // Electron globalShortcut. It has no key-up and re-fires on OS
-    // auto-repeat, so a hold-mode PTT used to toggle mute on every repeat
-    // while the key was held (Dispencer2, NumLock on Windows). Hold is
-    // emulated instead: talk on the first press, release 350 ms after the
-    // repeats stop.
+    // Ordinary accelerator through Electron globalShortcut. It has no key-up
+    // and re-fires on OS auto-repeat, so a hold-mode PTT that lands here (the
+    // input hook unavailable, or a key it could not map) used to toggle mute
+    // on every repeat while the key was held (Dispencer2, NumLock on Windows).
+    // Hold is emulated instead: talk on the first press, release 350 ms after
+    // the repeats stop.
     try {
       globalShortcut.register(b.accel, () => {
         if (b.event === 'voice:ptt' && b.mode === 'hold') {
@@ -2055,14 +2103,7 @@ function registerScreenShareHandler() {
   // Re-enumerate, then try ID match, then by name + display_id, then any
   // screen on the same display, then the first screen — only fail if there
   // is literally nothing to share.
-  // desktopCapturer never lists windows of the calling process (Chromium's
-  // enumerate_current_process_windows is off), so Haven's own window is
-  // added by hand from getMediaSourceId(). Handy when walking someone
-  // through the app. Its id is accepted verbatim here.
-  let selfWindowSourceId = null;
-
   async function resolveSelectedSource(originalSources, requestedId) {
-    if (requestedId && requestedId === selfWindowSourceId) return { id: requestedId, name: 'Haven Desktop' };
     const direct = originalSources.find(s => s.id === requestedId);
     if (direct) return direct;
 
@@ -2132,6 +2173,27 @@ function registerScreenShareHandler() {
         });
       }
 
+      // Haven's own window is worth listing too, if only to debug a stream
+      // (#5604). Window enumeration on some setups leaves out the app doing
+      // the capturing, so it is added by hand from the window's own media
+      // source id, with a fresh capture of the page as its preview. It goes
+      // into the raw list so the attach-time lookup finds it by id as well.
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          const ownId = mainWindow.getMediaSourceId();
+          if (ownId && !sources.some(s => s.id === ownId)) {
+            let thumbnail = null;
+            try {
+              const shot = await mainWindow.capturePage();
+              if (shot && !shot.isEmpty()) thumbnail = shot.resize({ width: 320 });
+            } catch { /* no preview; the name still identifies it */ }
+            sources.push({ id: ownId, name: mainWindow.getTitle() || 'Haven', thumbnail, appIcon: null, display_id: '' });
+          }
+        }
+      } catch (err) {
+        console.warn(`[ScreenShare] could not add Haven's own window: ${err.message}`);
+      }
+
       // Audio-producing applications (native addon)
       let audioApps = [];
       try { audioApps = audioCapture.getAudioApplications(); }
@@ -2144,17 +2206,6 @@ function registerScreenShareHandler() {
         appIcon:    s.appIcon ? s.appIcon.toDataURL() : null,
         display_id: s.display_id,
       }));
-      try {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          selfWindowSourceId = mainWindow.getMediaSourceId();
-          let selfThumb = null;
-          try {
-            const img = await mainWindow.capturePage();
-            if (img && !img.isEmpty()) selfThumb = img.resize({ width: 320 }).toDataURL();
-          } catch {}
-          sourceData.push({ id: selfWindowSourceId, name: 'Haven Desktop', thumbnail: selfThumb, appIcon: null, display_id: '' });
-        }
-      } catch (err) { console.warn('[ScreenShare] self-window source unavailable:', err.message); }
       console.log(`[ScreenShare] source enumeration complete: ${sourceData.length} source(s)`);
 
       const requestFrame = request?.frame;

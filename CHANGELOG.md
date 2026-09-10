@@ -3,10 +3,21 @@
 ## Unreleased
 
 ### Fixed
-- **Push-to-talk "Hold" spam-toggled mute while the key was held (Windows, NumLock).** Any ordinary key went through Electron's `globalShortcut`, which has no key-up and re-fires on OS auto-repeat, and the hold branch sent the toggle event anyway. Single keys uiohook knows (NumLock, F13, Space, letters, digits, numpad) now go through uiohook like the bare modifiers, with real press and release and auto-repeat suppressed. Combos that still land on `globalShortcut` emulate hold: talk on the first press, release 350 ms after the repeats stop. Reported by Dispencer2.
-- **Haven Desktop's own window can be screen-shared.** `desktopCapturer` never lists windows of the calling process, so the app's window is added from `getMediaSourceId()` with a live thumbnail. Useful when walking someone through the app. Expect the hall-of-mirrors preview; that is inherent. Reported by Dispencer2.
-- **The screen-share picker sometimes had no scroll bar for Application Windows.** The scroll pane was `flex: 1` next to non-shrinking siblings inside a `max-height` box, so a tall audio-app row could squeeze it to nothing; closing and reopening happened to land on a shorter row. The box now has a definite height, the list keeps a minimum height, the audio row scrolls on its own past 30vh, and the scrollbar is visible. Reported by Dispencer2.
-- **The screen-share picker follows the app theme.** It is an overlay inside the Haven page, but every colour was hardcoded to an old palette. It now uses the theme variables (`--bg-card`, `--accent`, `--text-primary`, ...) with the old values as fallbacks, so it matches Settings and switches live with the theme. Its Cancel button no longer inherits the server picker's full-width rule. Reported by Dispencer2.
+- **The screen share picker sometimes had no scroll bar for application windows.** The list was `flex: 1` beside siblings that never shrink inside a `max-height` box, so a tall audio-app row could squeeze it to nothing. The box has a definite height now, the list keeps a minimum height, the audio row scrolls on its own past 30vh, and the scrollbar is visible. Its Cancel button no longer inherits the server picker's full-width rule. Reported by Dispencer2.
+- **Push to talk in hold mode no longer spam-toggles when the input hook is unavailable.** A key that still goes through Electron's shortcut API re-fires on OS auto-repeat, and each repeat flipped mute. Hold is emulated there instead: talk on the first press, release 350 ms after the repeats stop. Reported by Dispencer2.
+
+---
+
+## v1.4.31
+
+### Added
+- **Haven's own window shows up in the screen share picker.** Handy for checking what a stream looks like from the other side. Some setups never listed the app doing the capturing, so it is now added by hand. (Haven #5604)
+
+### Fixed
+- **The screen share picker follows the app's theme.** It used one fixed dark palette whatever theme was on; it now takes its colours and font from the theme like the other dialogs. (Haven #5605)
+- **Push to talk in hold mode works on ordinary keys and combos.** A hold-mode PTT bound to something like V or Ctrl+Space could only toggle, because the shortcut API Electron offers has no key release. Those bindings now go through the same input hook that already handled bare modifiers and mouse buttons, so the mic opens on press and closes on release. The right-hand Ctrl, Alt, Shift and Meta keys now count for a bare-modifier binding too. (Haven #5603)
+
+---
 
 ## v1.4.30
 
