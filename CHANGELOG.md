@@ -1,6 +1,6 @@
 # Haven Desktop Changelog
 
-## Unreleased
+## v1.4.31
 
 ### Added
 - **Haven's own window shows up in the screen share picker.** Handy for checking what a stream looks like from the other side. Some setups never listed the app doing the capturing, so it is now added by hand. (Haven #5604)
