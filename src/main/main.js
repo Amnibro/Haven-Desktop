@@ -2794,6 +2794,13 @@ function registerIPC() {
     if (mainWindow) {
       mainWindow.setAutoHideMenuBar(!!enabled);
       mainWindow.setMenuBarVisibility(!enabled);
+      // Hiding or showing the bar changes the content area without a resize
+      // event, so the server view kept its old height and left a strip of
+      // bare window along the bottom. Re-fit it now and once the frame has
+      // settled. (Haven #5626)
+      const refit = () => { try { syncAllServerViewBounds(); } catch {} };
+      refit();
+      setTimeout(refit, 100);
     }
     return true;
   });
