@@ -629,6 +629,8 @@ function _accelToMouseButton(accel) {
   return parseInt(m[1], 10);
 }
 
+let _gsPttTimer = null;
+
 function _isUiohookAccel(accel) {
   if (!accel) return false;
   if (/^Mouse\d+$/i.test(accel)) return true;
@@ -717,6 +719,7 @@ function unregisterVoiceShortcuts() {
   ['mute', 'deafen', 'ptt'].forEach(k => {
     try { if (cfg[k] && !_isUiohookAccel(cfg[k])) globalShortcut.unregister(cfg[k]); } catch {}
   });
+  if (_gsPttTimer) { clearTimeout(_gsPttTimer); _gsPttTimer = null; }
   _uiohookKeyBindings.clear();
   _uiohookMouseBindings.clear();
   _uiohookDownState.clear();
@@ -780,15 +783,29 @@ function registerVoiceShortcuts() {
       continue;
     }
 
-    // Ordinary accelerator through Electron globalShortcut. Toggle-only, since
-    // it has no key-up. A hold-mode PTT only lands here when the input hook is
-    // unavailable or could not map the key, and then it degrades to toggle.
+    // Ordinary accelerator through Electron globalShortcut. It has no key-up
+    // and re-fires on OS auto-repeat, so a hold-mode PTT that lands here (the
+    // input hook unavailable, or a key it could not map) used to toggle mute
+    // on every repeat while the key was held (Dispencer2, NumLock on Windows).
+    // Hold is emulated instead: talk on the first press, release 350 ms after
+    // the repeats stop.
     try {
       globalShortcut.register(b.accel, () => {
-        const channel = b.event === 'voice:ptt'
-          ? (b.mode === 'hold' ? 'voice:ptt-toggle' : 'voice:ptt-toggle')
-          : b.event;
-        safeSend(getActiveContents(), channel);
+        if (b.event === 'voice:ptt' && b.mode === 'hold') {
+          const stateKey = 'g:voice:ptt';
+          if (!_uiohookDownState.has(stateKey)) {
+            _uiohookDownState.add(stateKey);
+            safeSend(getActiveContents(), 'voice:ptt-down');
+          }
+          if (_gsPttTimer) clearTimeout(_gsPttTimer);
+          _gsPttTimer = setTimeout(() => {
+            _gsPttTimer = null;
+            _uiohookDownState.delete(stateKey);
+            safeSend(getActiveContents(), 'voice:ptt-up');
+          }, 350);
+          return;
+        }
+        safeSend(getActiveContents(), b.event === 'voice:ptt' ? 'voice:ptt-toggle' : b.event);
       });
     } catch (e) {
       console.warn(`[Shortcuts] Failed to register ${b.accel}:`, e.message);
