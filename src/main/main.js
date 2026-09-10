@@ -2156,6 +2156,27 @@ function registerScreenShareHandler() {
         });
       }
 
+      // Haven's own window is worth listing too, if only to debug a stream
+      // (#5604). Window enumeration on some setups leaves out the app doing
+      // the capturing, so it is added by hand from the window's own media
+      // source id, with a fresh capture of the page as its preview. It goes
+      // into the raw list so the attach-time lookup finds it by id as well.
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          const ownId = mainWindow.getMediaSourceId();
+          if (ownId && !sources.some(s => s.id === ownId)) {
+            let thumbnail = null;
+            try {
+              const shot = await mainWindow.capturePage();
+              if (shot && !shot.isEmpty()) thumbnail = shot.resize({ width: 320 });
+            } catch { /* no preview; the name still identifies it */ }
+            sources.push({ id: ownId, name: mainWindow.getTitle() || 'Haven', thumbnail, appIcon: null, display_id: '' });
+          }
+        }
+      } catch (err) {
+        console.warn(`[ScreenShare] could not add Haven's own window: ${err.message}`);
+      }
+
       // Audio-producing applications (native addon)
       let audioApps = [];
       try { audioApps = audioCapture.getAudioApplications(); }

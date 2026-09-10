@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- **Haven's own window shows up in the screen share picker.** Handy for checking what a stream looks like from the other side. Some setups never listed the app doing the capturing, so it is now added by hand. (Haven #5604)
+
 ### Fixed
 - **Push to talk in hold mode works on ordinary keys and combos.** A hold-mode PTT bound to something like V or Ctrl+Space could only toggle, because the shortcut API Electron offers has no key release. Those bindings now go through the same input hook that already handled bare modifiers and mouse buttons, so the mic opens on press and closes on release. The right-hand Ctrl, Alt, Shift and Meta keys now count for a bare-modifier binding too. (Haven #5603)
 
