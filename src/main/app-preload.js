@@ -797,43 +797,45 @@ function showScreenPicker(sources, audioApps, requestId) {
       #haven-screen-picker {
         position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:999999;
         display:flex;align-items:center;justify-content:center;
-        font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+        font-family:var(--font-main,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif);
       }
-      .hsp-box{background:#1a1a2e;border-radius:14px;padding:28px;max-width:820px;width:92%;
-        max-height:82vh;display:flex;flex-direction:column;border:1px solid rgba(107,79,219,.3);
+      /* Colours come from the theme the page is wearing, with the old dark
+         palette as the fallback, so the picker matches the rest of the app. */
+      .hsp-box{background:var(--bg-primary,#1a1a2e);color:var(--text-primary,#e0e0e0);border-radius:14px;padding:28px;max-width:820px;width:92%;
+        max-height:82vh;display:flex;flex-direction:column;border:1px solid var(--border,rgba(107,79,219,.3));
         box-shadow:0 20px 60px rgba(0,0,0,.5);}
-      .hsp-title{color:#e0e0e0;font-size:20px;font-weight:700;margin-bottom:2px;flex-shrink:0}
-      .hsp-sub{color:#888;font-size:13px;margin-bottom:14px;flex-shrink:0}
+      .hsp-title{color:var(--text-primary,#e0e0e0);font-size:20px;font-weight:700;margin-bottom:2px;flex-shrink:0}
+      .hsp-sub{color:var(--text-muted,#888);font-size:13px;margin-bottom:14px;flex-shrink:0}
       .hsp-scroll{flex:1;overflow-y:auto;padding-right:4px;margin-right:-4px;min-height:0}
       .hsp-sec{margin-bottom:14px}
-      .hsp-sec-title{color:#aaa;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;
+      .hsp-sec-title{color:var(--text-secondary,#aaa);font-size:11px;text-transform:uppercase;letter-spacing:1.2px;
         margin-bottom:8px;font-weight:700}
       .hsp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px}
-      .hsp-src{background:#16213e;border-radius:8px;padding:8px;cursor:pointer;
+      .hsp-src{background:var(--bg-secondary,#16213e);border-radius:8px;padding:8px;cursor:pointer;
         border:2px solid transparent;transition:border-color .2s,transform .15s}
-      .hsp-src:hover{border-color:rgba(107,79,219,.5);transform:translateY(-1px)}
-      .hsp-src.sel{border-color:#6b4fdb}
+      .hsp-src:hover{border-color:var(--accent,#6b4fdb);transform:translateY(-1px)}
+      .hsp-src.sel{border-color:var(--accent,#6b4fdb)}
       .hsp-src img{width:100%;border-radius:4px;margin-bottom:6px;aspect-ratio:16/9;
-        object-fit:cover;background:#0d0d1a}
+        object-fit:cover;background:var(--bg-tertiary,#0d0d1a)}
       .hsp-src .hsp-thumb-ph{width:100%;border-radius:4px;margin-bottom:6px;aspect-ratio:16/9;
-        background:linear-gradient(135deg,#0d0d1a,#1a1a2e);display:flex;align-items:center;
-        justify-content:center;color:#777;font-size:11px;letter-spacing:.3px}
-      .hsp-src-name{color:#ccc;font-size:12px;text-align:center;white-space:nowrap;
+        background:var(--bg-tertiary,#0d0d1a);display:flex;align-items:center;
+        justify-content:center;color:var(--text-muted,#777);font-size:11px;letter-spacing:.3px}
+      .hsp-src-name{color:var(--text-secondary,#ccc);font-size:12px;text-align:center;white-space:nowrap;
         overflow:hidden;text-overflow:ellipsis}
-      .hsp-audio{padding-top:14px;border-top:1px solid #2a2a4a;flex-shrink:0;margin-top:10px}
+      .hsp-audio{padding-top:14px;border-top:1px solid var(--border,#2a2a4a);flex-shrink:0;margin-top:10px}
       .hsp-apps{display:flex;flex-wrap:wrap;gap:8px}
-      .hsp-app{background:#16213e;border-radius:6px;padding:8px 14px;cursor:pointer;
+      .hsp-app{background:var(--bg-secondary,#16213e);border-radius:6px;padding:8px 14px;cursor:pointer;
         border:2px solid transparent;transition:border-color .2s;display:flex;
-        align-items:center;gap:8px;color:#ccc;font-size:13px}
-      .hsp-app:hover{border-color:rgba(107,79,219,.5)}
-      .hsp-app.sel{border-color:#6b4fdb}
+        align-items:center;gap:8px;color:var(--text-secondary,#ccc);font-size:13px}
+      .hsp-app:hover{border-color:var(--accent,#6b4fdb)}
+      .hsp-app.sel{border-color:var(--accent,#6b4fdb)}
       .hsp-app .ico{width:20px;height:20px}
       .hsp-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;flex-shrink:0}
       .hsp-btn{padding:8px 22px;border-radius:6px;border:none;font-size:14px;cursor:pointer;font-weight:600}
-      .hsp-cancel{background:#333;color:#ccc}.hsp-cancel:hover{background:#444}
-      .hsp-share{background:#6b4fdb;color:#fff}.hsp-share:hover{background:#7b5fe9}
+      .hsp-cancel{background:var(--bg-tertiary,#333);color:var(--text-secondary,#ccc)}.hsp-cancel:hover{filter:brightness(1.15)}
+      .hsp-share{background:var(--accent,#6b4fdb);color:var(--accent-text,#fff)}.hsp-share:hover{filter:brightness(1.1)}
       .hsp-share:disabled{opacity:.45;cursor:not-allowed}
-      .hsp-none{color:#666;font-size:12px;font-style:italic;padding:8px}
+      .hsp-none{color:var(--text-muted,#666);font-size:12px;font-style:italic;padding:8px}
     </style>
 
     <div class="hsp-box">
