@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+- **The native window follows the page palette.** Matrix, Braid, Compact and
+  the other themes update the Electron chrome background from `--bg-primary`
+  and `--accent`, so a layout overlay no longer leaves a leftover strip of
+  the previous color.
+
 ### Fixed
 - **The screen share picker sometimes had no scroll bar for application windows.** The list was `flex: 1` beside siblings that never shrink inside a `max-height` box, so a tall audio-app row could squeeze it to nothing. The box has a definite height now, the list keeps a minimum height, the audio row scrolls on its own past 30vh, and the scrollbar is visible. Its Cancel button no longer inherits the server picker's full-width rule. Reported by Dispencer2.
 - **Push to talk in hold mode no longer spam-toggles when the input hook is unavailable.** A key that still goes through Electron's shortcut API re-fires on OS auto-repeat, and each repeat flipped mute. Hold is emulated there instead: talk on the first press, release 350 ms after the repeats stop. Reported by Dispencer2.
