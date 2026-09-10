@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- **Check for Updates in the Help menu and on the tray icon.** The app only ever checked quietly at start-up, so there was no way to ask. The new entry checks on demand and says when you are already on the latest version. (Haven #5627)
+
 ### Fixed
 - **Hiding the menu bar no longer leaves a bare strip along the bottom of the window.** The server view kept the height it had with the bar showing, so the app shifted up and a slice of empty window showed under it. It is re-fitted when the setting changes. (Haven #5626)
 - **The screen share picker sometimes had no scroll bar for application windows.** The list was `flex: 1` beside siblings that never shrink inside a `max-height` box, so a tall audio-app row could squeeze it to nothing. The box has a definite height now, the list keeps a minimum height, the audio row scrolls on its own past 30vh, and the scrollbar is visible. Its Cancel button no longer inherits the server picker's full-width rule. Reported by Dispencer2.

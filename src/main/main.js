@@ -21,6 +21,7 @@ const {
 // ── Auto-Updater (electron-updater) ───────────────────────
 let autoUpdater;
 try { ({ autoUpdater } = require('electron-updater')); } catch {}
+let _manualUpdateCheck = false; // set by Help > Check for Updates (Haven #5627)
 
 // ── Constants ─────────────────────────────────────────────
 // ── Enable native Wayland support (must be before app.whenReady) ──
@@ -400,7 +401,15 @@ app.whenReady().then(async () => {
   if (autoUpdater) {
     autoUpdater.autoDownload = false;
     autoUpdater.on('update-available', (info) => {
+      _manualUpdateCheck = false;
       safeSend(getActiveContents() || welcomeWindow?.webContents, 'update:available', { version: info.version });
+    });
+    // The start-up check stays quiet when nothing is new; a check the user
+    // asked for from the menu says so. (Haven #5627)
+    autoUpdater.on('update-not-available', () => {
+      if (!_manualUpdateCheck) return;
+      _manualUpdateCheck = false;
+      showUpdateBox('info', t('update.upToDate', { version: app.getVersion() }));
     });
     autoUpdater.on('download-progress', (progress) => {
       safeSend(getActiveContents() || welcomeWindow?.webContents, 'update:download-progress', { percent: Math.round(progress.percent) });
@@ -411,6 +420,10 @@ app.whenReady().then(async () => {
     autoUpdater.on('error', (err) => {
       console.error('[AutoUpdate] Error:', err.message);
       safeSend(getActiveContents() || welcomeWindow?.webContents, 'update:error', { message: err.message });
+      if (_manualUpdateCheck) {
+        _manualUpdateCheck = false;
+        showUpdateBox('error', t('update.error', { error: err.message }));
+      }
     });
     autoUpdater.checkForUpdates().catch(() => {});
   }
@@ -1943,6 +1956,24 @@ function buildLanguageSubmenu() {
   ];
 }
 
+// Help > Check for Updates, also on the tray menu. The result comes back
+// through the auto-updater events above. (Haven #5627)
+function showUpdateBox(type, message) {
+  const parent = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow
+    : (welcomeWindow && !welcomeWindow.isDestroyed()) ? welcomeWindow : null;
+  const opts = { type, title: t('menu.checkForUpdates'), message, buttons: [t('update.ok')] };
+  try { parent ? dialog.showMessageBox(parent, opts) : dialog.showMessageBox(opts); } catch {}
+}
+
+function checkForUpdatesFromMenu() {
+  if (!autoUpdater || !app.isPackaged) {
+    showUpdateBox('info', t(app.isPackaged ? 'update.unavailable' : 'update.notPackaged'));
+    return;
+  }
+  _manualUpdateCheck = true;
+  autoUpdater.checkForUpdates().catch(() => { /* reported by the error handler */ });
+}
+
 function buildAppMenu() {
   const isMac = process.platform === 'darwin';
   return Menu.buildFromTemplate([
@@ -2004,6 +2035,15 @@ function buildAppMenu() {
       label: t('menu.language'),
       submenu: buildLanguageSubmenu(),
     },
+    {
+      label: t('menu.help'),
+      role: 'help',
+      submenu: [
+        { label: t('menu.checkForUpdates'), click: () => checkForUpdatesFromMenu() },
+        { type: 'separator' },
+        { label: t('menu.version', { version: app.getVersion() }), enabled: false },
+      ],
+    },
   ]);
 }
 
@@ -2052,6 +2092,7 @@ function rebuildTrayMenu() {
   const running = serverManager?.isRunning();
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Haven Desktop v${app.getVersion()}`, enabled: false },
+    { label: t('menu.checkForUpdates'), click: () => checkForUpdatesFromMenu() },
     { type: 'separator' },
     { label: t('tray.show'), click: () => { (mainWindow || welcomeWindow)?.show(); (mainWindow || welcomeWindow)?.focus(); } },
     ...(mainWindow ? [{

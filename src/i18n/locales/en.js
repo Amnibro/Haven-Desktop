@@ -49,6 +49,9 @@ module.exports = {
   'update.error': 'Update error: {error}',
   'update.close': 'Close update notification',
   'update.unavailable': 'Auto-updater not available',
+  'update.upToDate': "You're on the latest version, Haven Desktop v{version}.",
+  'update.notPackaged': 'Update checks only work in the installed app.',
+  'update.ok': 'OK',
 
   'serverPicker.switch': 'Switch Server',
   'serverPicker.connect': 'Connect',
@@ -94,6 +97,9 @@ module.exports = {
   'menu.bringAllToFront': 'Bring All to Front',
   'menu.close': 'Close',
   'menu.language': 'Language',
+  'menu.help': 'Help',
+  'menu.checkForUpdates': 'Check for Updates',
+  'menu.version': 'Haven Desktop v{version}',
 
   'connection.goBackServer': 'Go Back to My Server',
   'connection.goBackWelcome': 'Go Back to Welcome',
