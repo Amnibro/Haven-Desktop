@@ -661,11 +661,13 @@ function _ensureUiohookStarted() {
       if (!_uiohookModsDown(binding.mods, e)) continue;
       const stateKey = `k:${binding.event}`;
       if (binding.mode === 'hold') {
-        if (_uiohookDownState.has(stateKey)) return; // ignore OS auto-repeat
+        if (_uiohookDownState.has(stateKey)) continue; // ignore OS auto-repeat
         _uiohookDownState.add(stateKey);
         safeSend(getActiveContents(), `${binding.event}-down`);
       } else {
-        safeSend(getActiveContents(), binding.event);
+        // The preload listens for voice:ptt-toggle, the same name the
+        // shortcut API path sends; the bare event name went nowhere.
+        safeSend(getActiveContents(), binding.event === 'voice:ptt' ? 'voice:ptt-toggle' : binding.event);
       }
     }
   });
@@ -684,11 +686,11 @@ function _ensureUiohookStarted() {
       if (e.button !== binding.button) continue;
       const stateKey = `m:${binding.event}`;
       if (binding.mode === 'hold') {
-        if (_uiohookDownState.has(stateKey)) return;
+        if (_uiohookDownState.has(stateKey)) continue;
         _uiohookDownState.add(stateKey);
         safeSend(getActiveContents(), `${binding.event}-down`);
       } else {
-        safeSend(getActiveContents(), binding.event);
+        safeSend(getActiveContents(), binding.event === 'voice:ptt' ? 'voice:ptt-toggle' : binding.event);
       }
     }
   });
