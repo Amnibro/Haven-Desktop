@@ -2,6 +2,7 @@ mod audio;
 mod commands;
 mod i18n;
 mod lowmem;
+mod nav_fail;
 mod server_manager;
 mod state;
 mod theme_icon;
@@ -79,6 +80,8 @@ pub fn run() {
             commands::nav_back_to_welcome,
             commands::nav_switch_server,
             commands::nav_change_primary_server,
+            nav_fail::nav_page_ready,
+            nav_fail::nav_connection_info,
             commands::window_minimize,
             commands::window_maximize,
             commands::window_close,
@@ -131,21 +134,30 @@ pub fn run() {
                 commands::accept_self_signed(&welcome);
             }
 
-            // Auto-open remembered server if skipWelcome is set
+            // Welcome starts hidden so skipWelcome never flashes Host / Join.
             let prefs = state::get_user_prefs(app.handle())?;
-            if prefs
+            let skip = prefs
                 .get("skipWelcome")
                 .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
-                if let Some(url) = prefs.get("serverUrl").and_then(|v| v.as_str()) {
-                    let url = url.to_string();
+                .unwrap_or(false);
+            let remembered = prefs
+                .get("serverUrl")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            if skip {
+                if let Some(url) = remembered {
                     let handle = app.handle().clone();
                     std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(400));
                         let _ = commands::open_app_window(&handle, &url);
                     });
+                } else if let Some(welcome) = app.get_webview_window("welcome") {
+                    let _ = welcome.show();
+                    let _ = welcome.set_focus();
                 }
+            } else if let Some(welcome) = app.get_webview_window("welcome") {
+                let _ = welcome.show();
+                let _ = welcome.set_focus();
             }
 
             Ok(())
@@ -176,14 +188,26 @@ pub fn run() {
                 }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
                 if window.label() == "main" {
-                    if let Ok(minimize) = state::get_bool(window.app_handle(), "minimizeToTray") {
-                        if minimize {
-                            api.prevent_close();
-                            let _ = window.hide();
-                            if let Some(w) = window.app_handle().get_webview_window("main") { lowmem::set_low_memory(&w, true); }
-                        }
+                    let returning = *app.state::<state::AppState>().returning_to_welcome.lock();
+                    if returning {
+                        *app.state::<state::AppState>().returning_to_welcome.lock() = false;
+                        return;
                     }
+                    if let Ok(true) = state::get_bool(app, "minimizeToTray") {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        if let Some(w) = app.get_webview_window("main") {
+                            lowmem::set_low_memory(&w, true);
+                        }
+                        return;
+                    }
+                    tray::quit_app(app);
+                    return;
+                }
+                if window.label() == "welcome" && app.get_webview_window("main").is_none() {
+                    tray::quit_app(app);
                 }
             }
         })

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Haven</title>
+  <link rel="stylesheet" href="/src/welcome.css">
+  <style>
+    .error-page {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 32px;
+      text-align: center;
+      gap: 14px;
+    }
+    .error-page .hex-logo { font-size: 48px; line-height: 1; }
+    .error-page h1 { font-size: 22px; font-weight: 700; }
+    .error-page p {
+      max-width: 420px;
+      color: var(--text-dim);
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .error-page code {
+      display: inline-block;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .error-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 10px;
+    }
+    a.btn { text-decoration: none; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="error-page" id="haven-connection-error">
+    <div class="hex-logo" aria-hidden="true">⬡</div>
+    <h1 id="error-title">Connection Problem</h1>
+    <p id="error-message">Haven couldn't load that server.</p>
+    <code id="error-url"></code>
+    <div class="error-actions">
+      <a class="btn primary" id="btn-retry" href="/__haven_nav__/retry">Try Again</a>
+      <a class="btn secondary" id="btn-back-server" hidden href="/__haven_nav__/server">Go Back to My Server</a>
+      <a class="btn secondary" id="btn-welcome" href="/__haven_nav__/welcome">Go Back to Welcome</a>
+    </div>
+  </div>
+  <script type="module" src="/src/connection-error.js"></script>
+</body>
+</html>

@@ -18,6 +18,8 @@ pub struct AppState {
     pub current_locale: Mutex<String>,
     pub quitting: Mutex<bool>,
     pub audio_emitter: Mutex<Option<AppHandle>>,
+    pub pending_server_load: Mutex<Option<String>>,
+    pub returning_to_welcome: Mutex<bool>,
 }
 
 impl Default for AppState {
@@ -32,6 +34,8 @@ impl Default for AppState {
             current_locale: Mutex::new("en".into()),
             quitting: Mutex::new(false),
             audio_emitter: Mutex::new(None),
+            pending_server_load: Mutex::new(None),
+            returning_to_welcome: Mutex::new(false),
         }
     }
 }

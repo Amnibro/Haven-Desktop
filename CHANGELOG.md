@@ -2,9 +2,24 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.4.0-tauri (2026-09-10)
+
+### Fixed
+- **Connection-error buttons actually leave the dead server.** Welcome stays
+  hidden instead of being destroyed, so Go Back to Welcome and Go Back to My
+  Server can show it again. The page uses in-app actions instead of a dead
+  WebView2 document.
+
 ## v2.3.0-tauri (2026-09-10)
 
 ### Added
+- **Unreachable server is a Haven page now.** If localhost (or any server) refuses
+  the connection, the main window leaves Edge's "can't reach this page" and shows
+  Try Again, Go Back to Welcome, and Go Back to My Server when there is one.
+  Those buttons keep Welcome hidden (not destroyed) so they can bring it back.
+- **Remembered-server launch no longer flashes Host / Join.** That window stays
+  hidden when skip-welcome is on. Closing the main window quits the app (unless
+  Minimize to tray is on), so the tray does not keep a dead Edge page around.
 - **Save Image uses a native save dialog.** WebView2 ignores `<a download>` on
   a lot of http(s) media, so the bridge takes the image bytes and opens the
   OS picker. Pair with a Haven server that calls `havenDesktop.saveImage`.

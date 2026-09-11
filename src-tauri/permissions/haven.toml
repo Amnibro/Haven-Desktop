@@ -17,6 +17,8 @@ commands.allow = [
   "nav_back_to_welcome",
   "nav_switch_server",
   "nav_change_primary_server",
+  "nav_page_ready",
+  "nav_connection_info",
   "window_minimize",
   "window_maximize",
   "window_close",

@@ -27,16 +27,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = win.set_focus();
                 }
             }
-            "quit" => {
-                let state = app.state::<AppState>();
-                *state.quitting.lock() = true;
-                {
-                    let mut server = state.server.lock();
-                    let _ = server.stop_server();
-                }
-                crate::audio::cleanup();
-                app.exit(0);
-            }
+            "quit" => quit_app(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -59,4 +50,15 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .build(app)?;
 
     Ok(())
+}
+
+pub fn quit_app(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    *state.quitting.lock() = true;
+    {
+        let mut server = state.server.lock();
+        let _ = server.stop_server();
+    }
+    crate::audio::cleanup();
+    app.exit(0);
 }

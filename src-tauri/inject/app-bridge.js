@@ -8,6 +8,7 @@
     if (!core?.invoke) throw new Error('Tauri unavailable');
     return core.invoke(cmd, args);
   }
+  invoke('nav_page_ready').catch(() => {});
 
   async function listen(event, handler) {
     const eventApi = window.__TAURI__?.event;

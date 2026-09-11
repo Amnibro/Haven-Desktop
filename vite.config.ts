@@ -15,6 +15,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"),
         splash: resolve(__dirname, "splash.html"),
+        error: resolve(__dirname, "connection-error.html"),
       },
     },
   },

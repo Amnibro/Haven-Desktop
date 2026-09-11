@@ -80,6 +80,24 @@ fn rgb(c: u32) -> (u8, u8, u8) {
     (((c >> 16) & 0xff) as u8, ((c >> 8) & 0xff) as u8, (c & 0xff) as u8)
 }
 
+fn luminance(c: u32) -> f32 {
+    let (r, g, b) = rgb(c);
+    (0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32) / 255.0
+}
+
+/// Taskbar tiles are 16–32px. A light plate reads as a blank page on the
+/// Windows taskbar (and on a dark tray). Use the accent as the plate.
+fn taskbar_colors(bg: u32, fg: u32) -> (u32, u32) {
+    if luminance(bg) <= 0.72 {
+        return (bg, fg);
+    }
+    if luminance(fg) > 0.72 {
+        (0x191b28, 0x7c5cfc)
+    } else {
+        (fg, 0xffffff)
+    }
+}
+
 /// Same geometry as ic_launcher_foreground_*.xml on a 108 dp viewport, on a
 /// rounded square instead of Android's launcher mask.
 pub fn render(bg: u32, fg: u32, size: u32) -> Image<'static> {
@@ -159,7 +177,8 @@ fn paint_caption(_window: &tauri::WebviewWindow, _bg: u32, _fg: u32) {}
 
 /// Apply a color pair everywhere it shows: window icons, tray, caption bar.
 pub fn apply(app: &AppHandle, bg: u32, fg: u32) {
-    let icon = render(bg, fg, 256);
+    let (ibg, ifg) = taskbar_colors(bg, fg);
+    let icon = render(ibg, ifg, 256);
     for label in ["main", "welcome"] {
         if let Some(w) = app.get_webview_window(label) {
             let _ = w.set_icon(icon.clone());
@@ -167,7 +186,7 @@ pub fn apply(app: &AppHandle, bg: u32, fg: u32) {
         }
     }
     if let Some(tray) = app.tray_by_id("main") {
-        let _ = tray.set_icon(Some(render(bg, fg, 64)));
+        let _ = tray.set_icon(Some(render(ibg, ifg, 64)));
     }
 }
 
