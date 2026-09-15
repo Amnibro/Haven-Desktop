@@ -156,27 +156,26 @@ class ServerManager {
         const intentional = this._intentionalStop;
         this._intentionalStop = false;
 
-        if (intentional) return;      // stopServer() was called
-
-        // Any exit we did not ask for gets a restart, exit code 0 included:
-        // server.js exits 0 on purpose after Admin → Update so "the supervisor
-        // restarts us", and here we are the supervisor. Before this only
-        // crashes restarted, so an update left the app pointed at a dead server.
-        {
-          const now = Date.now();
-          const COOLDOWN_MS = 5000;
-          if (now - (this._lastRestart || 0) < COOLDOWN_MS) {
+        const now = Date.now();
+        const decision = decideHostedServerRestart({
+          intentional,
+          now,
+          lastRestart: this._lastRestart,
+          cooldownMs: 5000,
+        });
+        if (!decision.restart) {
+          if (decision.reason === 'cooldown') {
             this._emitLog('[Haven Desktop] Server crashed repeatedly — not restarting to avoid loop.\n');
-            return;
           }
-          this._lastRestart = now;
-          this._emitLog(`[Haven Desktop] Server exited (code ${code}${signal ? ', ' + signal : ''}) — restarting in 2 s…\n`);
-          setTimeout(() => {
-            if (!this._intentionalStop) {
-              this.startServer(serverDir).catch(() => {});
-            }
-          }, 2000);
+          return;
         }
+        this._lastRestart = now;
+        this._emitLog(`[Haven Desktop] Server exited (code ${code}${signal ? ', ' + signal : ''}) — restarting in 2 s…\n`);
+        setTimeout(() => {
+          if (!this._intentionalStop) {
+            this.startServer(serverDir).catch(() => {});
+          }
+        }, 2000);
       });
 
       // Fallback: assume ready after 15 s no matter what
@@ -282,4 +281,12 @@ class ServerManager {
   }
 }
 
-module.exports = { ServerManager };
+// Any exit we did not ask for gets a restart, exit code 0 included:
+// server.js exits 0 after Admin → Update so the supervisor can pick it up.
+function decideHostedServerRestart({ intentional, now, lastRestart, cooldownMs = 5000 }) {
+  if (intentional) return { restart: false, reason: 'intentional' };
+  if (now - (lastRestart || 0) < cooldownMs) return { restart: false, reason: 'cooldown' };
+  return { restart: true, reason: 'unrequested' };
+}
+
+module.exports = { ServerManager, decideHostedServerRestart };
