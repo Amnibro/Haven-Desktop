@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>About Amni Relay</title>
+  <link rel="stylesheet" href="welcome.css">
+  <style>
+    body { padding: 28px 32px; height: auto; overflow: auto; }
+    h1 { font-size: 22px; margin: 8px 0 4px; }
+    .block { max-width: 460px; }
+    p { color: var(--amni-text-dim); font-size: 13px; line-height: 1.55; margin: 10px 0; }
+    .meta { font-family: var(--amni-mono); font-size: 12px; color: var(--amni-text-muted); }
+  </style>
+</head>
+<body>
+  <div class="block">
+    <div class="suite">Amni Workspace</div>
+    <h1>Amni <span class="brand">Relay</span></h1>
+    <p class="meta" id="version"></p>
+    <p>Enterprise communications client for Amni Workspace. Channels, group messaging, DMs, files, roles, and WebRTC come from the Haven engine.</p>
+    <p>Haven stays unpaid and unentitled. Relay is a separate product surface — not a theme toggle, not a Microsoft 365 clone, and not a billing layer on Haven.</p>
+    <p class="meta">No Stripe · no entitlements · no licensing telemetry</p>
+  </div>
+  <script>
+    window.amni.getVersion().then((v) => {
+      document.getElementById('version').textContent = v ? `Version ${v}` : 'Development build';
+    }).catch(() => {});
+  </script>
+</body>
+</html>

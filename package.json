@@ -17,7 +17,8 @@
     "build:linux": "npm run build:native && electron-builder --linux",
     "build:native": "node ./node_modules/node-gyp/bin/node-gyp.js rebuild --directory=native",
     "rebuild:electron": "node ./node_modules/@electron/rebuild/lib/cli.js && npm run build:native",
-    "postinstall": "node ./node_modules/@electron/rebuild/lib/cli.js || echo electron-rebuild skipped"
+    "postinstall": "node ./node_modules/@electron/rebuild/lib/cli.js || echo electron-rebuild skipped",
+    "test:amni-relay": "node amni-relay/test/run.js"
   },
   "dependencies": {
     "electron-store": "^8.2.0",

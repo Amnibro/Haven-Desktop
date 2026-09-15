@@ -1,0 +1,54 @@
+/* Amni Relay overlay — injected into the Haven engine web app.
+   Remaps common accent tokens without rewriting Haven UX. */
+
+html[data-amni-relay],
+html[data-amni-relay] :root,
+:root {
+  --amni-bg: #0b0d10;
+  --amni-surface: #12161c;
+  --amni-surface-2: #1a2028;
+  --amni-border: #2a333e;
+  --amni-accent: #3ecfaf;
+  --amni-accent-hover: #4ee0c0;
+  --amni-accent-dim: #2a9d86;
+  --amni-accent-glow: rgba(62, 207, 175, 0.32);
+  --amni-brass: #e8b86d;
+  --amni-text: #e8edf2;
+  --amni-text-dim: #8b96a3;
+  --amni-text-muted: #5c6670;
+  --amni-success: #3ecfaf;
+  --amni-danger: #e26d6d;
+  --amni-radius: 8px;
+  --amni-font: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --amni-mono: "IBM Plex Mono", "Cascadia Code", "Fira Code", monospace;
+
+  --bg: var(--amni-bg);
+  --surface: var(--amni-surface);
+  --surface2: var(--amni-surface-2);
+  --border: var(--amni-border);
+  --accent: var(--amni-accent);
+  --accent-glow: var(--amni-accent-glow);
+  --text: var(--amni-text);
+  --text-dim: var(--amni-text-dim);
+  --text-muted: var(--amni-text-muted);
+  --success: var(--amni-success);
+  --danger: var(--amni-danger);
+}
+
+html[data-amni-relay] body {
+  background: var(--amni-bg);
+  color: var(--amni-text);
+}
+
+html[data-amni-relay] .amni-relay-wordmark {
+  position: fixed;
+  top: 10px;
+  left: 14px;
+  z-index: 2147480000;
+  font: 600 11px/1 var(--amni-font);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--amni-brass);
+  pointer-events: none;
+  opacity: 0.85;
+}

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Loading Amni Relay…</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%; width: 100%;
+      background: #0b0d10;
+      color: #e8edf2;
+      font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+      overflow: hidden; user-select: none;
+    }
+    .wrap {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px;
+    }
+    .mark {
+      width: 88px; height: 88px;
+      filter: drop-shadow(0 0 28px rgba(62, 207, 175, .4));
+      animation: pulse 2.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: .85; }
+    }
+    .suite {
+      font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+      color: #e8b86d;
+    }
+    h1 { font-size: 24px; font-weight: 650; }
+    h1 .brand { color: #3ecfaf; }
+    .status { color: #8b96a3; font-size: 13px; }
+    .spinner {
+      width: 26px; height: 26px;
+      border: 3px solid #2a333e;
+      border-top-color: #3ecfaf;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .footer {
+      position: absolute; bottom: 16px; left: 0; right: 0;
+      text-align: center; color: #5c6670; font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <img class="mark" src="../../assets/icon.svg" alt="Amni Relay">
+    <div class="suite">Amni Workspace</div>
+    <h1>Loading <span class="brand">Amni Relay</span>…</h1>
+    <div class="spinner" aria-label="Loading"></div>
+    <div class="status">Connecting to the Haven engine</div>
+  </div>
+  <div class="footer">Amni Relay · Haven engine unpaid</div>
+</body>
+</html>

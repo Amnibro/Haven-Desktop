@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amni Relay — Welcome</title>
+  <link rel="stylesheet" href="welcome.css">
+</head>
+<body>
+  <header class="titlebar" id="titlebar">
+    <span class="titlebar-title">Amni Relay</span>
+    <div class="titlebar-controls">
+      <button class="tb-btn" id="btn-min" title="Minimize">&#x2013;</button>
+      <button class="tb-btn tb-close" id="btn-close" title="Close">&#x2715;</button>
+    </div>
+  </header>
+
+  <section class="page active" id="page-choose">
+    <div class="logo-area">
+      <img class="mark" src="../../assets/icon.svg" alt="">
+      <div class="suite">Amni Workspace</div>
+      <h1>Welcome to <span class="brand">Amni Relay</span></h1>
+      <p class="tagline">Enterprise channels, DMs, files, and voice — Amni-faced, Haven-engined.</p>
+    </div>
+    <p class="session-pill" id="session-pill"></p>
+    <div class="cards">
+      <button class="card" id="card-sso">
+        <span class="card-kicker">Enterprise</span>
+        <span class="card-title">Sign in with SSO</span>
+        <span class="card-desc">OIDC or SAML stub for org identity.</span>
+      </button>
+      <button class="card" id="card-join">
+        <span class="card-kicker">Connect</span>
+        <span class="card-title">Join a workspace</span>
+        <span class="card-desc">Connect to a Haven-compatible engine server.</span>
+      </button>
+      <button class="card" id="card-host">
+        <span class="card-kicker">Local</span>
+        <span class="card-title">Host engine</span>
+        <span class="card-desc">Start a local Haven server from this machine.</span>
+      </button>
+    </div>
+    <p class="footer-note">
+      Relay is a distinct Amni product. Haven remains the unpaid engine — no Stripe, no entitlements, no licensing telemetry.
+    </p>
+  </section>
+
+  <section class="page" id="page-sso">
+    <button class="back-btn" id="sso-back">← Back</button>
+    <h2>Organization SSO</h2>
+    <div class="form">
+      <label for="sso-protocol">Protocol</label>
+      <select id="sso-protocol">
+        <option value="oidc">OIDC</option>
+        <option value="saml">SAML 2.0</option>
+      </select>
+      <div id="oidc-fields">
+        <label for="oidc-issuer">Issuer</label>
+        <input id="oidc-issuer" placeholder="https://idp.example.com/realms/amni" spellcheck="false">
+        <label for="oidc-client">Client ID</label>
+        <input id="oidc-client" placeholder="amni-relay" spellcheck="false">
+      </div>
+      <div id="saml-fields" style="display:none">
+        <label for="saml-entry">SSO entry point</label>
+        <input id="saml-entry" placeholder="https://idp.example.com/sso/saml" spellcheck="false">
+        <label for="saml-issuer">Issuer / Entity ID</label>
+        <input id="saml-issuer" placeholder="https://relay.amni.example/saml" spellcheck="false">
+      </div>
+      <label for="sso-email">Directory email (stub)</label>
+      <input id="sso-email" type="email" placeholder="you@amni.example">
+      <p class="hint">Scaffold: completes a local stub session. No IdP call and no licensing check.</p>
+      <button class="btn primary" id="btn-sso">Continue with SSO</button>
+      <p class="error" id="sso-error"></p>
+      <p class="ok" id="sso-ok"></p>
+    </div>
+  </section>
+
+  <section class="page" id="page-join">
+    <button class="back-btn" id="join-back">← Back</button>
+    <h2>Join a workspace</h2>
+    <div class="form">
+      <label for="server-url">Engine address</label>
+      <input id="server-url" placeholder="https://relay.example.com" spellcheck="false" autocomplete="off">
+      <p class="hint">Haven-compatible server URL. Relay skins the session as Amni; the engine stays Haven.</p>
+      <button class="btn primary" id="btn-connect" disabled>Connect</button>
+      <p class="error" id="join-error"></p>
+    </div>
+  </section>
+
+  <section class="page" id="page-host">
+    <button class="back-btn" id="host-back">← Back</button>
+    <h2>Host engine</h2>
+    <div class="form">
+      <p class="hint" id="host-status">Looking for a local Haven server…</p>
+      <button class="btn primary" id="btn-start-server" style="display:none">Start server</button>
+      <button class="btn secondary" id="btn-browse-server">Browse for server directory…</button>
+      <p class="error" id="host-error"></p>
+    </div>
+  </section>
+
+  <script src="welcome.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="amni" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ee0c0"/>
+      <stop offset="100%" stop-color="#2a9d86"/>
+    </linearGradient>
+  </defs>
+  <rect x="36" y="36" width="440" height="440" rx="48" fill="#0b0d10" stroke="#2a333e" stroke-width="16"/>
+  <circle cx="128" cy="256" r="36" fill="url(#amni)"/>
+  <circle cx="384" cy="160" r="28" fill="#e8b86d"/>
+  <circle cx="384" cy="352" r="28" fill="#e8b86d"/>
+  <path d="M164 256 H300" stroke="url(#amni)" stroke-width="18" stroke-linecap="round"/>
+  <path d="M300 256 L372 172" stroke="#e8b86d" stroke-width="14" stroke-linecap="round"/>
+  <path d="M300 256 L372 340" stroke="#e8b86d" stroke-width="14" stroke-linecap="round"/>
+</svg>

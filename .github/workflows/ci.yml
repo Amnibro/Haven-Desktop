@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  amni-relay:
+    name: Amni Relay + Haven unpaid guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Amni Relay tests
+        run: node amni-relay/test/run.js
+      - name: Haven must stay unpaid
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+            const blob = JSON.stringify(pkg);
+            if (/stripe/i.test(blob)) { console.error('Haven package.json mentions Stripe'); process.exit(1); }
+            const main = fs.readFileSync('src/main/main.js','utf8');
+            if (/AMNI_RELAY_BRANDING/.test(main)) { console.error('Haven main still has branding flag'); process.exit(1); }
+            if (/stripe/i.test(main)) { console.error('Haven main mentions Stripe'); process.exit(1); }
+            console.log('Haven unpaid guard ok');
+          "

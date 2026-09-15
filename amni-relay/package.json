@@ -1,0 +1,18 @@
+{
+  "name": "amni-relay",
+  "version": "0.1.0",
+  "description": "Amni Relay — Amni Workspace communications client. Vendors Haven Desktop core; Haven engine stays unpaid.",
+  "main": "src/main.js",
+  "author": {
+    "name": "Amni Workspace"
+  },
+  "license": "AGPL-3.0",
+  "private": true,
+  "scripts": {
+    "start": "node ../node_modules/electron/cli.js .",
+    "dev": "node ../node_modules/electron/cli.js . --dev",
+    "test": "node test/run.js",
+    "build": "electron-builder --config electron-builder.yml"
+  },
+  "devDependencies": {}
+}

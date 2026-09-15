@@ -11,6 +11,15 @@ Haven Desktop is a standalone Electron application that connects to any [Haven](
 > Haven Desktop is a client — it connects to a Haven server running on your (or a friend's) machine.
 > If you don't have one yet, **[download Haven](https://github.com/ancsemi/Haven)** first and follow the [setup guide](https://github.com/ancsemi/Haven/blob/main/GUIDE.md).
 
+### Related: Amni Relay (separate product)
+
+**Amni Relay** is a distinct [Amni Workspace](amni-relay/PRODUCT.md) client that vendors this desktop core. It is not a theme toggle on Haven.
+
+- Haven stays unpaid: no Stripe, no entitlements, no licensing telemetry on this project.
+- Relay adds Amni identity plus enterprise stubs (SSO, group/DM policy, Office/Workspace connectors) in [`amni-relay/`](amni-relay/).
+- Naming: **Amni Workspace** = suite, **Amni Relay** = communications product, **Haven** = unpaid engine.
+- Not a Microsoft 365 clone.
+
 ---
 
 ## 📥 Download & Install
@@ -116,6 +125,7 @@ GitHub Actions builds the Windows `.exe` and Linux `.AppImage` / `.deb`, then pu
 
 ```
 Haven-Desktop/
+├── amni-relay/             # Amni Relay product (separate app; vendors this core)
 ├── src/
 │   ├── main/
 │   │   ├── main.js             # Electron main process
