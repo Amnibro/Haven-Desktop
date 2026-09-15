@@ -9,6 +9,20 @@
     return core.invoke(cmd, args);
   }
   invoke('nav_page_ready').catch(() => {});
+  let havenFocused = document.hasFocus();
+  const patchSocketEmit = () => {
+    const proto = window.io?.Socket?.prototype;
+    if (!proto || proto.__havenFocusPatched) return !!proto;
+    const orig = proto.emit;
+    proto.emit = function (ev, data, ...rest) { return orig.call(this, ev, ev === 'visibility-change' && data && typeof data.visible === 'boolean' ? { ...data, visible: data.visible && havenFocused } : data, ...rest); };
+    proto.__havenFocusPatched = true;
+    return true;
+  };
+  let patchTries = 0;
+  const patchTimer = setInterval(() => (patchSocketEmit() || ++patchTries > 480) && clearInterval(patchTimer), 250);
+  window.__havenFocus = (f) => { havenFocused = !!f; window.app?.socket?.emit?.('visibility-change', { visible: !document.hidden }); };
+  document.addEventListener('DOMContentLoaded', () => { havenFocused = document.hasFocus(); });
+  window.addEventListener('focus', () => havenFocused || window.__havenFocus(true));
 
   async function listen(event, handler) {
     const eventApi = window.__TAURI__?.event;

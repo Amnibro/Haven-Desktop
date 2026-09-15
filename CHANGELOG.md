@@ -2,6 +2,16 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.4.1-tauri (2026-09-15)
+
+### Fixed
+- **Phone notifications arrive while the desktop app is open.** A Haven server
+  skips mobile push for anyone who has a socket reporting visible, and WebView2
+  kept reporting visible whenever the window sat behind other windows or in the
+  tray. The bridge now folds the OS window focus into every `visibility-change`
+  the page sends, and the Rust side pushes focus changes and the tray hide into
+  the page, so an unfocused desktop lets FCM and web push reach the phone.
+
 ## v2.4.0-tauri (2026-09-10)
 
 ### Fixed
