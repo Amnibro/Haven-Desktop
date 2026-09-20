@@ -30,10 +30,19 @@ const EMBED_ORIGINS: [&str; 5] = [
 pub fn accept_self_signed(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "linux")]
     {
-        use webkit2gtk::{TLSErrorsPolicy, WebContextExt, WebViewExt};
+        use webkit2gtk::{SettingsExt, TLSErrorsPolicy, WebContextExt, WebViewExt};
         let _ = window.with_webview(|w| {
             if let Some(ctx) = w.inner().web_context() {
                 ctx.set_tls_errors_policy(TLSErrorsPolicy::Ignore);
+            }
+            // WebKitGTK ships with WebRTC and media capture switched off and
+            // wry never turns them on, so the page had no RTCPeerConnection
+            // and Haven's STUN probe reported every server dead. The setting
+            // only helps on a WebKit built with ENABLE_WEB_RTC (Amni OS
+            // rebuilds webkit2gtk-4.1 that way; stock Arch does not).
+            if let Some(settings) = w.inner().settings() {
+                settings.set_enable_webrtc(true);
+                settings.set_enable_media_stream(true);
             }
         });
     }

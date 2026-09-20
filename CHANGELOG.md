@@ -2,6 +2,22 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.5.0-tauri (2026-09-20)
+
+Level with Electron 1.4.30. Linux (Amni OS) only; Windows behaviour is unchanged.
+
+### Fixed
+- **Voice on Linux: WebRTC is switched on in WebKitGTK.** WebKit ships with
+  `enable-webrtc` and `enable-media-stream` off and wry never sets them, so the
+  page had no `RTCPeerConnection` and Haven reported every STUN server dead.
+  The main window now enables both. This needs a WebKitGTK built with
+  `ENABLE_WEB_RTC`, which Amni OS provides through its own webkit2gtk-4.1
+  package; on a stock distro package the setting has nothing to enable.
+- **Pasting a picture on Linux.** WebKitGTK gives the paste event an empty
+  DataTransfer for a clipboard bitmap (WebKit bug 218519). The bridge reads the
+  image through the clipboard plugin and replays the paste with a real PNG
+  file, so the composer queues it the same way it does on Windows.
+
 ## v2.4.1-tauri (2026-09-15)
 
 ### Fixed

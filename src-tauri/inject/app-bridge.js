@@ -424,6 +424,7 @@
     getVersion: () => invoke('app_version'),
 
     clipboardWriteImage: (payload) => invoke('clipboard_write_image', { payload }),
+    clipboardReadImage: () => invoke('clipboard_read_image'),
     clipboardWriteText: (text) => invoke('clipboard_write_text', { text }),
     saveImage: ({ bytes, filename } = {}) =>
       invoke('save_image', { payload: bytes || '', filename: filename || 'haven-image.png' }),
@@ -559,6 +560,36 @@
         e.preventDefault();
         exitFullscreen();
       }
+    }, true);
+  })();
+
+  // ── Paste rescue for WebKitGTK ───────────────────────────
+  // A bitmap on the Linux clipboard reaches the page as a paste event whose
+  // DataTransfer has no items and no files (WebKit bug 218519), so Haven's
+  // composer sees nothing to queue. Ask the clipboard plugin for the picture
+  // and replay the paste with a real File; the page handler takes it from
+  // there exactly as it does on WebView2.
+  (function () {
+    if (detectPlatform() !== 'linux') return;
+    let busy = false;
+    document.addEventListener('paste', (e) => {
+      if (e.__havenReplay || busy) return;
+      const dt = e.clipboardData;
+      const hasFile = !!dt && Array.from(dt.items || []).some((i) => i.kind === 'file');
+      const hasText = !!dt && (dt.types || []).some((t) => /^text\//.test(t));
+      if (hasFile || hasText) return;
+      const target = e.target;
+      busy = true;
+      invoke('clipboard_read_image').then(async (res) => {
+        if (!res || !res.ok || !res.dataUrl) return;
+        const blob = await (await fetch(res.dataUrl)).blob();
+        const file = new File([blob], 'pasted-image.png', { type: 'image/png' });
+        const replay = new DataTransfer();
+        replay.items.add(file);
+        const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: replay });
+        ev.__havenReplay = true;
+        (target || document.activeElement || document.body).dispatchEvent(ev);
+      }).catch(() => {}).finally(() => { busy = false; });
     }, true);
   })();
 

@@ -108,6 +108,7 @@ pub fn run() {
             commands::shortcuts_register,
             commands::clipboard_write_text,
             commands::clipboard_write_image,
+            commands::clipboard_read_image,
             commands::save_image,
             commands::audio_is_supported,
             commands::audio_get_apps,
