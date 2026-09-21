@@ -8,8 +8,6 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs   = require('fs');
 const net  = require('net');
-const http = require('http');
-const https = require('https');
 
 class ServerManager {
   constructor(store, opts = {}) {
@@ -17,22 +15,26 @@ class ServerManager {
     this.serverProcess = null;
     this._running      = false;
     this._port         = null;
-    this._url          = null;
     this._showConsole  = opts.showConsole || false;
-    this._owned        = false;
   }
 
+  // ── Detect a Haven server in common locations ────────────
   detectServer() {
     const candidates = [];
+
+    // Saved path first (from a previous successful launch)
     const saved = this.store.get('userPrefs.serverPath');
     if (saved) candidates.push(saved);
 
+    // Sibling dirs next to Haven-Desktop. Prefer Haven-Braid (full Braid UI
+    // fork with node_modules) over plain Haven (often missing deps / older).
     const parent = path.resolve(__dirname, '..', '..', '..');
     candidates.push(path.join(parent, 'Haven-Braid'));
     candidates.push(path.join(parent, 'haven-braid'));
     candidates.push(path.join(parent, 'Haven'));
     candidates.push(path.join(parent, 'haven'));
 
+    // Common user locations
     const home = process.env.HOME || process.env.USERPROFILE || '';
     if (home) {
       candidates.push(path.join(home, 'Haven-Braid'));
@@ -43,10 +45,12 @@ class ServerManager {
       candidates.push(path.join(home, 'Documents', 'ai', 'Haven-Braid'));
       candidates.push(path.join(home, 'Documents', 'Haven'));
       candidates.push(path.join(home, 'Documents', 'ai', 'Haven'));
+      // Haven Server installer default: %APPDATA%\HavenServer
       const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
       candidates.push(path.join(appData, 'HavenServer'));
       candidates.push(path.join(appData, 'Haven'));
       candidates.push(path.join(appData, 'haven'));
+      // Common install locations (e.g. Windows AppData / Programs)
       const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
       candidates.push(path.join(localAppData, 'Programs', 'Haven'));
       candidates.push(path.join(localAppData, 'Programs', 'haven'));
@@ -70,39 +74,13 @@ class ServerManager {
         if (!fallback) fallback = hit;
       } catch { /* continue */ }
     }
+
     return fallback || { found: false, path: null };
   }
 
-  _persistSuccess(serverDir, port, url) {
-    this._running = true;
-    this._port = port;
-    this._url = url;
-    try {
-      this.store.set('userPrefs.serverPath', serverDir);
-      this.store.set('userPrefs.serverUrl', url);
-      this.store.set('userPrefs.mode', 'host');
-      const hist = this.store.get('serverHistory') || [];
-      const cleaned = hist
-        .filter(e => e && e.url)
-        .map(e => {
-          try {
-            const u = new URL(e.url);
-            if ((u.hostname === 'localhost' || u.hostname === '127.0.0.1') && u.protocol === 'https:') {
-              u.protocol = 'http:';
-              return { ...e, url: u.origin };
-            }
-          } catch {}
-          return e;
-        })
-        .filter(e => e.url !== url && e.url !== `https://localhost:${port}` && e.url !== `http://localhost:${port}`);
-      this.store.set('serverHistory', [{ url, name: 'Local Haven', lastConnected: Date.now() }, ...cleaned].slice(0, 20));
-    } catch {}
-  }
-
+  // ── Start the server ──────────────────────────────────────
   async startServer(serverDir) {
-    if (this._running && this._url) {
-      return { success: true, port: this._port, url: this._url };
-    }
+    if (this._running) return { success: true, port: this._port, url: `http://localhost:${this._port}` };
 
     const sjs = path.join(serverDir, 'server.js');
     if (!fs.existsSync(sjs)) {
@@ -111,146 +89,141 @@ class ServerManager {
     if (!fs.existsSync(path.join(serverDir, 'node_modules', 'better-sqlite3'))) {
       return {
         success: false,
-        error: `Dependencies missing in ${serverDir}. Run npm install there first.`,
+        error: `Dependencies missing in ${serverDir}. Run: cd that folder && npm install`,
       };
     }
 
+    // Prefer PORT from env / userPrefs; fall back to 3000. Avoid killing a
+    // healthy external Haven-Braid we didn't spawn (only reclaim if free/zombie).
     const preferred = parseInt(process.env.HAVEN_DESKTOP_PORT || process.env.PORT || '3000', 10) || 3000;
-
-    // Always prefer an already-healthy Haven on the preferred port (stock Start Haven.bat).
-    const existing = await this._probeHealth(preferred);
-    if (existing) {
-      this._owned = false;
-      this._persistSuccess(serverDir, preferred, existing.url);
-      this._emitLog(`[Haven Desktop] Reusing live server at ${existing.url}\n`);
-      return { success: true, port: preferred, url: existing.url, reused: true };
-    }
-
-    // Port taken by non-Haven? Pick next free. Free? Use preferred after clear.
-    let port = preferred;
-    if (!(await this._portFree(preferred))) {
-      port = await this._findPort(preferred + 1);
-      this._emitLog(`[Haven Desktop] Port ${preferred} busy (not Haven) — using ${port}\n`);
+    const portBusy = !(await this._portFree(preferred));
+    if (portBusy) {
+      // If something already answers Haven health on preferred port, reuse it.
+      try {
+        const health = await this._probeHealth(preferred);
+        if (health) {
+          this._running = true;
+          this._port = preferred;
+          this._url = health.url;
+          this.store.set('userPrefs.serverPath', serverDir);
+          return { success: true, port: preferred, url: health.url, reused: true };
+        }
+      } catch { /* fall through and pick another port */ }
     } else {
       await this._killProcessOnPort(preferred);
     }
 
-    return this._spawnServer(serverDir, port);
-  }
+    this._port = await this._findPort(preferred);
 
-  _spawnServer(serverDir, port) {
     return new Promise(resolve => {
-      const forceHttp = String(process.env.FORCE_HTTP || 'true').toLowerCase() !== 'false';
       const env = {
         ...process.env,
-        PORT: String(port),
-        FORCE_HTTP: forceHttp ? 'true' : (process.env.FORCE_HTTP || 'true'),
+        PORT: String(this._port),
+        // Local desktop hosting: HTTP is fine (Electron accepts certs anyway;
+        // FORCE_HTTP avoids SSL/self-sign surprises when certs half-exist).
+        FORCE_HTTP: process.env.FORCE_HTTP || 'true',
       };
+
+      // Use system `node` (Electron's binary is not plain Node)
       const nodeCmd = process.platform === 'win32' ? 'node.exe' : 'node';
-      const nodeArgs = ['--max-old-space-size=512', '--expose-gc', path.join(serverDir, 'server.js')];
+
+      // Cap the server process V8 heap at 512 MB and expose GC so the
+      // memory watchdog in server.js can nudge it.  Together with the
+      // reduced SQLite pragmas (cache_size 8 MB, mmap_size 32 MB), total
+      // server memory stays well under 700 MB and prevents the Oilpan
+      // "large allocation" OOM the user was seeing.
+      const nodeArgs = ['--max-old-space-size=512', '--expose-gc', sjs];
+
       const spawnOpts = {
         cwd: serverDir,
         env,
         shell: false,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: !this._showConsole,
       };
+
       if (this._showConsole) {
+        // Show server in its own visible console window
         spawnOpts.detached = true;
         spawnOpts.windowsHide = false;
+        spawnOpts.stdio = ['pipe', 'pipe', 'pipe'];
+        this.serverProcess = spawn(nodeCmd, nodeArgs, spawnOpts);
+      } else {
+        spawnOpts.stdio = ['pipe', 'pipe', 'pipe'];
+        spawnOpts.windowsHide = true;
+        this.serverProcess = spawn(nodeCmd, nodeArgs, spawnOpts);
       }
 
-      this.serverProcess = spawn(nodeCmd, nodeArgs, spawnOpts);
-      this._owned = true;
-      this._port = port;
+      let resolved  = false;
+      let isHTTPS   = false;   // detect from server output
 
-      let resolved = false;
-      let isHTTPS = false;
-      let sawEaddr = false;
-
-      const finish = (ok, extra = {}) => {
+      const finish = (ok, extra) => {
         if (resolved) return;
         resolved = true;
-        if (ok) {
-          const protocol = (!forceHttp && isHTTPS) ? 'https' : 'http';
-          const url = `${protocol}://localhost:${this._port}`;
-          this._persistSuccess(serverDir, this._port, url);
-          resolve({ success: true, port: this._port, url, ...extra });
-        } else {
-          this._running = false;
-          resolve({ success: false, port: this._port, ...extra });
-        }
+        this._running = ok;
+        const protocol = isHTTPS ? 'https' : 'http';
+        this._url = `${protocol}://localhost:${this._port}`;
+        if (ok) this.store.set('userPrefs.serverPath', serverDir);
+        resolve({ success: ok, port: this._port, url: this._url, ...extra });
       };
 
       this.serverProcess.stdout.on('data', (d) => {
         const msg = d.toString();
         this._emitLog(msg);
-        if (!forceHttp && /https enabled/i.test(msg)) isHTTPS = true;
-        if (!resolved && /HAVEN is running|listening|running on port|Local:\s+https?:\/\//i.test(msg)) {
+
+        // Haven prints "🔒 HTTPS enabled" when SSL certs are loaded
+        if (/https enabled/i.test(msg)) isHTTPS = true;
+
+        // Haven prints "Haven running on port …" or similar when ready
+        if (!resolved && /listening|running|started/i.test(msg)) {
           finish(true);
         }
       });
 
       this.serverProcess.stderr.on('data', (d) => {
-        const msg = d.toString();
-        this._emitLog('[ERR] ' + msg);
-        if (/EADDRINUSE/i.test(msg)) sawEaddr = true;
+        this._emitLog('[ERR] ' + d.toString());
       });
 
       this.serverProcess.on('error', (err) => finish(false, { error: err.message }));
 
+      // ── Auto-restart on crash ───────────────────────────
+      // If the server exits unexpectedly (OOM, unhandled error, etc.),
+      // restart it automatically so the user doesn't have to manually
+      // relaunch.  Uses a simple cooldown to avoid restart loops.
       this.serverProcess.on('exit', (code, signal) => {
+        this._running = false;
         const intentional = this._intentionalStop;
         this._intentionalStop = false;
-        if (!resolved) {
-          if (sawEaddr) {
-            finish(false, { error: `Port ${this._port} already in use. Stop the other process or Host again.` });
-          } else {
-            finish(false, { error: `Server exited early (code ${code}, signal ${signal || 'none'}).` });
-          }
-          return;
-        }
-        this._running = false;
-        if (intentional || !this._owned) return;
+
+        if (intentional) return;      // stopServer() was called
+
         if (code !== 0 && code !== null) {
           const now = Date.now();
-          if (now - (this._lastRestart || 0) < 5000) {
-            this._emitLog('[Haven Desktop] Server crashed repeatedly — not restarting.\n');
+          const COOLDOWN_MS = 5000;
+          if (now - (this._lastRestart || 0) < COOLDOWN_MS) {
+            this._emitLog('[Haven Desktop] Server crashed repeatedly — not restarting to avoid loop.\n');
             return;
           }
           this._lastRestart = now;
           this._emitLog(`[Haven Desktop] Server exited with code ${code} — restarting in 2 s…\n`);
           setTimeout(() => {
-            if (!this._intentionalStop) this.startServer(serverDir).catch(() => {});
+            if (!this._intentionalStop) {
+              this.startServer(serverDir).catch(() => {});
+            }
           }, 2000);
         }
       });
 
-      // Poll health instead of blind 15s success
-      let tries = 0;
-      const poll = setInterval(async () => {
-        if (resolved) { clearInterval(poll); return; }
-        tries++;
-        const health = await this._probeHealth(this._port);
-        if (health) {
-          clearInterval(poll);
-          isHTTPS = health.url.startsWith('https');
-          finish(true);
-          return;
-        }
-        if (tries >= 30) {
-          clearInterval(poll);
-          finish(false, { error: 'Server did not become healthy within 30s. Check Node / npm install in the server folder.' });
-        }
-      }, 1000);
+      // Fallback: assume ready after 15 s no matter what
+      setTimeout(() => finish(true), 15000);
     });
   }
 
+  // ── Stop the server ───────────────────────────────────────
   stopServer() {
     this._intentionalStop = true;
-    if (this.serverProcess && this._owned) {
+    if (this.serverProcess) {
       const pid = this.serverProcess.pid;
       try {
+        // On Windows, SIGTERM doesn't always work — use taskkill for the process tree
         if (process.platform === 'win32' && pid) {
           const { execSync } = require('child_process');
           try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' }); } catch {}
@@ -261,33 +234,33 @@ class ServerManager {
       this.serverProcess = null;
     }
     this._running = false;
-    this._port = null;
-    this._url = null;
-    this._owned = false;
+    this._port    = null;
     return { success: true };
   }
 
+  // ── Status ────────────────────────────────────────────────
   getStatus() {
     return {
       running: this._running,
-      port: this._port,
-      url: this._running ? (this._url || `http://localhost:${this._port}`) : null,
+      port:    this._port,
+      url:     this._running ? (this._url || `http://localhost:${this._port}`) : null,
     };
   }
 
   isRunning() { return this._running; }
 
-  onLog(cb) { this._logCb = cb; }
+  // ── Log forwarding ────────────────────────────────────────
+  // Main process calls onLog() to subscribe; server-manager calls _emitLog()
+  onLog(cb)    { this._logCb = cb; }
   _emitLog(msg) { if (this._logCb) this._logCb(msg); }
 
+  // ── Port scanner ──────────────────────────────────────────
   _portFree(p) {
     return new Promise(r => {
       const s = net.createServer();
       s.unref();
       s.on('error', () => r(false));
-      s.listen({ port: p, host: '0.0.0.0', exclusive: true }, () => {
-        s.close(() => r(true));
-      });
+      s.listen(p, () => s.close(() => r(true)));
     });
   }
 
@@ -298,26 +271,20 @@ class ServerManager {
     throw new Error('No available port found');
   }
 
-  _probeOnce(mod, port, rejectUnauthorized) {
+  _probeHealth(port) {
     return new Promise(resolve => {
-      const req = mod.get({
-        host: '127.0.0.1',
-        port,
-        path: '/api/health',
-        timeout: 1200,
-        rejectUnauthorized: !!rejectUnauthorized,
-      }, res => {
+      const http = require('http');
+      const req = http.get({ host: '127.0.0.1', port, path: '/api/health', timeout: 1500 }, res => {
         let body = '';
         res.on('data', c => { body += c; });
         res.on('end', () => {
           try {
             const j = JSON.parse(body);
             if (j && (j.status === 'online' || j.name)) {
-              const proto = mod === https ? 'https' : 'http';
-              resolve({ url: `${proto}://localhost:${port}`, name: j.name || 'Haven' });
+              resolve({ url: `http://localhost:${port}` });
               return;
             }
-          } catch {}
+          } catch { /* not haven */ }
           resolve(null);
         });
       });
@@ -326,22 +293,21 @@ class ServerManager {
     });
   }
 
-  async _probeHealth(port) {
-    const httpHit = await this._probeOnce(http, port, true);
-    if (httpHit) return httpHit;
-    return this._probeOnce(https, port, false);
-  }
-
+  // ── Kill zombie processes on a port (Windows & Unix) ────
+  // After a crash, the old server may linger as a zombie holding the port.
+  // This ensures a clean start by killing any process bound to the target port.
   async _killProcessOnPort(port) {
     return new Promise(resolve => {
       const { exec } = require('child_process');
       if (process.platform === 'win32') {
+        // Find PID listening on the port
         exec(`netstat -ano | findstr "LISTENING" | findstr ":${port} "`, (err, stdout) => {
           if (err || !stdout) return resolve();
+          const lines = stdout.trim().split('\n');
           const pids = new Set();
-          for (const line of stdout.trim().split('\n')) {
+          for (const line of lines) {
             const parts = line.trim().split(/\s+/);
-            const pid = parseInt(parts[parts.length - 1], 10);
+            const pid = parseInt(parts[parts.length - 1]);
             if (pid && pid !== process.pid) pids.add(pid);
           }
           if (pids.size === 0) return resolve();
@@ -350,16 +316,23 @@ class ServerManager {
             exec(`taskkill /F /PID ${pid}`, (e) => {
               if (!e) console.log(`[Haven Desktop] Killed zombie process PID ${pid} on port ${port}`);
               killed++;
-              if (killed === pids.size) setTimeout(resolve, 500);
+              if (killed === pids.size) {
+                // Brief delay to let the OS release the port
+                setTimeout(resolve, 500);
+              }
             });
           }
         });
       } else {
+        // Unix: lsof + kill
         exec(`lsof -ti:${port}`, (err, stdout) => {
           if (err || !stdout) return resolve();
-          const pids = stdout.trim().split('\n').map(p => parseInt(p, 10)).filter(p => p && p !== process.pid);
+          const pids = stdout.trim().split('\n').map(p => parseInt(p)).filter(p => p && p !== process.pid);
           if (pids.length === 0) return resolve();
-          exec(`kill -9 ${pids.join(' ')}`, () => setTimeout(resolve, 500));
+          exec(`kill -9 ${pids.join(' ')}`, () => {
+            console.log(`[Haven Desktop] Killed zombie process(es) on port ${port}: ${pids.join(', ')}`);
+            setTimeout(resolve, 500);
+          });
         });
       }
     });

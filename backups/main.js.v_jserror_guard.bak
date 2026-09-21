@@ -28,9 +28,7 @@ if (process.platform === 'linux') {
 const IS_DEV    = process.argv.includes('--dev');
 const SHOW_SERVER  = process.argv.includes('--show-server');
 const START_HIDDEN = process.argv.includes('--hidden');
-const ICON_PNG  = path.join(__dirname, '..', '..', 'assets', 'icon.png');
-const ICON_ICO  = path.join(__dirname, '..', '..', 'assets', 'icon.ico');
-const ICON_PATH = process.platform === 'win32' && fs.existsSync(ICON_ICO) ? ICON_ICO : ICON_PNG;
+const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
 
 // ── Persistent Store ──────────────────────────────────────
 // electron-store / conf JSON.parse dies hard on UTF-8 BOM or corrupt
@@ -264,31 +262,8 @@ function sanitizeServerHistory(list) {
   return out;
 }
 
-function isDiscordAppHost(host) {
-  const h = String(host || '').toLowerCase();
-  return h === 'discord.com' || h === 'www.discord.com'
-    || h === 'canary.discord.com' || h === 'ptb.discord.com'
-    || h === 'discordapp.com' || h === 'www.discordapp.com'
-    || h === 'discord.gg' || h.endsWith('.discord.gg');
-}
-
-function isDiscordAppUrl(serverUrl) {
-  try { return isDiscordAppHost(new URL(serverUrl).hostname); }
-  catch { return false; }
-}
-
 function buildServerAppUrl(serverUrl) {
-  const normalized = normalizeServerUrl(serverUrl);
-  if (isDiscordAppUrl(normalized)) {
-    try {
-      const parsed = new URL(normalized);
-      const path = (parsed.pathname || '/').replace(/\/+$/, '') || '';
-      return parsed.origin + (path || '/app');
-    } catch {
-      return 'https://discord.com/app';
-    }
-  }
-  return normalized + '/app.html';
+  return normalizeServerUrl(serverUrl) + '/app.html';
 }
 
 // ── Single-Instance Lock ──────────────────────────────────
@@ -836,7 +811,7 @@ function createWelcomeWindow() {
     minWidth: 620, minHeight: 480,
     resizable: false,
     frame: false,
-    backgroundColor: store.get('themeColors.bg') || '#0d0d1a',
+    backgroundColor: '#0d0d1a',
     icon: ICON_PATH,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -863,7 +838,7 @@ function createAppWindow(serverUrl) {
       minWidth: 800, minHeight: 600,
       frame: true,
       autoHideMenuBar: !!store.get('hideMenuBar'),
-      backgroundColor: store.get('themeColors.bg') || '#0d0d1a',
+      backgroundColor: '#0d0d1a',
       icon: ICON_PATH,
       show: false,
       // The BrowserView per-server already disables backgroundThrottling, but
@@ -994,33 +969,22 @@ function ensureServerView(serverUrl, { background = false } = {}) {
   if (view) return view;
 
   {
-    const externalApp = isDiscordAppUrl(url);
     view = new BrowserView({
-      webPreferences: externalApp
-        ? {
-            // Official discord.com in its own tab — no Haven preload, no node.
-            contextIsolation: true,
-            nodeIntegration: false,
-            sandbox: true,
-            webSecurity: true,
-            spellcheck: true,
-            backgroundThrottling: false,
-          }
-        : {
-            preload: path.join(__dirname, 'app-preload.js'),
-            contextIsolation: false,
-            nodeIntegration: false,
-            sandbox: false,
-            webSecurity: true,
-            spellcheck: true,
-            // Prevent Chromium from suspending AudioContext and throttling timers
-            // when the window is minimised or loses focus.  Without this the
-            // _startAnalyser / _startLocalTalkDetection setIntervals are coalesced
-            // to 1-second buckets and the AudioContext is auto-suspended, which
-            // makes voice-activity indicators go dark until the window is restored
-            // AND the AudioContext is explicitly resumed.
-            backgroundThrottling: false,
-          },
+      webPreferences: {
+        preload: path.join(__dirname, 'app-preload.js'),
+        contextIsolation: false,
+        nodeIntegration: false,
+        sandbox: false,
+        webSecurity: true,
+        spellcheck: true,
+        // Prevent Chromium from suspending AudioContext and throttling timers
+        // when the window is minimised or loses focus.  Without this the
+        // _startAnalyser / _startLocalTalkDetection setIntervals are coalesced
+        // to 1-second buckets and the AudioContext is auto-suspended, which
+        // makes voice-activity indicators go dark until the window is restored
+        // AND the AudioContext is explicitly resumed.
+        backgroundThrottling: false,
+      },
     });
     mainWindow.addBrowserView(view);
     const [w, h] = mainWindow.getContentSize();
@@ -1065,14 +1029,6 @@ function ensureServerView(serverUrl, { background = false } = {}) {
     // also gets reflected in the window title once the view is the active one.
     view.webContents.on('page-title-updated', _syncTitleIfActive);
 
-    if (externalApp) {
-      try {
-        const ua = view.webContents.getUserAgent()
-          .replace(/\s+Electron\/\S+/g, '')
-          .replace(/\s+Haven[^\s]*/gi, '');
-        if (ua) view.webContents.setUserAgent(ua);
-      } catch {}
-    }
     view.webContents.loadURL(buildServerAppUrl(url));
 
     // ── Forward renderer performance logs to main process console ──
@@ -1293,7 +1249,7 @@ function ensureServerView(serverUrl, { background = false } = {}) {
           if (!mainWindow || mainWindow.isDestroyed?.()) return;
           if (!view || !view.webContents) return;
           try { if (view.webContents.isDestroyed()) return; } catch { return; }
-          try { view.webContents.loadURL(buildServerAppUrl(url)); } catch {}
+          try { view.webContents.loadURL(url); } catch {}
         }, delay);
         return;
       }
@@ -1345,10 +1301,9 @@ function ensureServerView(serverUrl, { background = false } = {}) {
     ];
     view.webContents.on('will-navigate', (event, navUrl) => {
       try {
-        const nav = new URL(navUrl);
-        if (nav.origin === new URL(url).origin) return;
-        if (EMBED_ORIGINS.includes(nav.origin)) return;
-        if (externalApp && isDiscordAppHost(nav.hostname)) return;
+        const navOrigin = new URL(navUrl).origin;
+        if (navOrigin === new URL(url).origin) return;
+        if (EMBED_ORIGINS.includes(navOrigin)) return;
         event.preventDefault();
         shell.openExternal(navUrl);
       } catch {}
@@ -1360,10 +1315,6 @@ function ensureServerView(serverUrl, { background = false } = {}) {
     view.webContents.setWindowOpenHandler(({ url: openUrl }) => {
       try {
         const parsedOpen = new URL(openUrl);
-        if (externalApp && isDiscordAppHost(parsedOpen.hostname)) {
-          try { view.webContents.loadURL(openUrl); } catch {}
-          return { action: 'deny' };
-        }
         const parsedServer = new URL(url);
         if (parsedOpen.origin === parsedServer.origin) {
           // ── Issue #5306: in-app navigation for Haven message/channel links ──
@@ -2217,31 +2168,7 @@ function registerScreenShareHandler() {
 // IPC Handlers
 // ═══════════════════════════════════════════════════════════
 
-function cssColorToHex(s) {
-  if (!s || typeof s !== 'string') return null;
-  const v = s.trim();
-  if (/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) {
-    const h = v.slice(1);
-    if (h.length === 3 || h.length === 4) return `#${[...h.slice(0, 3)].map((c) => c + c).join('')}`;
-    return `#${h.slice(0, 6)}`;
-  }
-  const m = v.match(/rgba?\(\s*([\d.]+)\s*[, ]+\s*([\d.]+)\s*[, ]+\s*([\d.]+)/i);
-  if (!m) return null;
-  const hex = (n) => Math.round(Number(n)).toString(16).padStart(2, '0');
-  return `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
-}
-
-function applyWindowTheme({ bg, accent } = {}) {
-  const color = cssColorToHex(bg) || store.get('themeColors.bg') || '#0d0d1a';
-  store.set('themeColors', { bg: color, accent: cssColorToHex(accent) || store.get('themeColors.accent') || '#7c5cfc' });
-  for (const win of [mainWindow, welcomeWindow]) {
-    if (win && !win.isDestroyed()) win.setBackgroundColor(color);
-  }
-}
-
 function registerIPC() {
-
-  ipcMain.on('theme:colors', (_e, payload) => applyWindowTheme(payload || {}));
 
   // ── Server Management ─────────────────────────────────
   ipcMain.handle('server:detect',      ()        => serverManager.detectServer());
@@ -2501,29 +2428,6 @@ function registerIPC() {
       if (img.isEmpty()) return { ok: false, reason: 'decoded-empty' };
       clipboard.writeImage(img);
       return { ok: true };
-    } catch (err) {
-      return { ok: false, reason: String(err && err.message || err) };
-    }
-  });
-
-  ipcMain.handle('dialog:save-image', async (e, { payload, filename } = {}) => {
-    try {
-      if (!payload || typeof payload !== 'string') return { ok: false, reason: 'no-payload' };
-      const raw = payload.includes(',') ? payload.slice(payload.lastIndexOf(',') + 1) : payload;
-      const buf = Buffer.from(String(raw).replace(/\s+/g, ''), 'base64');
-      if (!buf.length) return { ok: false, reason: 'empty-image' };
-      const leaf = String(filename || 'haven-image.png').replace(/\\/g, '/').split('/').pop() || 'haven-image.png';
-      const name = leaf.replace(/[^A-Za-z0-9._-]/g, '') || 'haven-image.png';
-      const wc = e && e.sender;
-      const win = (wc && !wc.isDestroyed() && BrowserWindow.fromWebContents(wc)) || mainWindow;
-      const picked = await dialog.showSaveDialog(win && !win.isDestroyed() ? win : undefined, {
-        title: 'Save image',
-        defaultPath: name,
-        filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
-      });
-      if (picked.canceled || !picked.filePath) return { ok: false, cancelled: true };
-      fs.writeFileSync(picked.filePath, buf);
-      return { ok: true, path: picked.filePath };
     } catch (err) {
       return { ok: false, reason: String(err && err.message || err) };
     }

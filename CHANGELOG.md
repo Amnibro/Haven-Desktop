@@ -1,5 +1,35 @@
 # Haven Desktop Changelog
 
+## v1.4.26+jserror-guard (2026-08-04)
+
+### Fixed
+- **“Java error” dialog** is Electron’s *A JavaScript error occurred in the main process* — now logs real stack to `%AppData%/haven-desktop/main-crash.log` and shows that message instead of a blank generic box.
+- **Corrupt auto-update** to 1.4.28: partial download (~1 MB) + sha512 mismatch. Purge tiny pending `.exe` files; do not auto-install on quit; clearer `update:error` handling.
+- **Native audio addon missing** no longer `throw`s from `startCapture` (returns `false` + status).
+
+### Ops
+- Cleared `%LocalAppData%/haven-desktop-updater/pending` on this machine; re-patched installed `app.asar` with braid-local + guards.
+- Prefer `Start Haven Desktop.bat` (repo source) if the Start Menu install ever drifts.
+
+## v1.4.26+braid-local (2026-07-31)
+
+### Fixed
+- **Host server detect missed Haven-Braid** and preferred sibling `Haven` (often without `node_modules`).
+- **Host mode always killed port 3000**, including a healthy external server.
+- **Corrupt `config.json` (UTF-8 BOM)** crashed main process — sanitize/reset on load.
+- **Local SSL mismatch:** Desktop opened `https://localhost:3000` while server ran HTTP → `ERR_SSL_PROTOCOL_ERROR`. `normalizeServerUrl` forces `http://` for localhost/127.0.0.1; host spawn uses health probe (http then https), reuses live server, polls readiness (no blind 15s success), and persists `http://localhost:<port>`.
+- Prefer Haven-Braid + deps; history rewrites broken local https entries.
+
+### UX
+- Stock: `Haven-Braid\Start Haven.bat` + `Start Haven Desktop.bat` / Host (auto). Verified: window **Haven - Login** on `http://localhost:3000` (Braid assets).
+
+### Stability (freeze after login)
+- **Do not auto-preload remote servers** when active session is localhost (unless `backgroundServerConnections=true`). Multi-view Chromium+Socket to OG/Community was freezing Windows after login.
+- Prefs: `backgroundServerConnections: false`; history can stay local-only for Braid work.
+- `--dev` no longer opens DevTools or a detached server console by default (`HAVEN_DEVTOOLS=1` / `--show-server` to opt in). `Start Haven Desktop.bat` runs **without** `--dev` (pass `--dev` if needed).
+
+---
+
 ## v1.4.26
 
 ### Fixed

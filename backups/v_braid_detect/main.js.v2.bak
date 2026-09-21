@@ -28,9 +28,7 @@ if (process.platform === 'linux') {
 const IS_DEV    = process.argv.includes('--dev');
 const SHOW_SERVER  = process.argv.includes('--show-server');
 const START_HIDDEN = process.argv.includes('--hidden');
-const ICON_PNG  = path.join(__dirname, '..', '..', 'assets', 'icon.png');
-const ICON_ICO  = path.join(__dirname, '..', '..', 'assets', 'icon.ico');
-const ICON_PATH = process.platform === 'win32' && fs.existsSync(ICON_ICO) ? ICON_ICO : ICON_PNG;
+const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
 
 // ── Persistent Store ──────────────────────────────────────
 // electron-store / conf JSON.parse dies hard on UTF-8 BOM or corrupt
@@ -208,22 +206,11 @@ function buildServerNameMap() {
 function normalizeServerUrl(serverUrl) {
   let value = String(serverUrl || '').trim();
   if (!value) return '';
-  if (!/^https?:\/\//i.test(value)) {
-    // Local host without scheme → HTTP (Desktop host / Start Haven.bat default FORCE_HTTP).
-    // Bare remote hosts still default to HTTPS.
-    const bare = value.replace(/\/.*$/, '');
-    const isLocal = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(bare);
-    value = (isLocal ? 'http://' : 'https://') + value;
-  }
+  if (!/^https?:\/\//i.test(value)) value = 'https://' + value;
   try {
     const parsed = new URL(value);
     parsed.hash = '';
     parsed.search = '';
-    // Local HTTPS almost always wrong when Haven runs FORCE_HTTP / plain node.
-    // Stock Desktop was failing with ERR_SSL_PROTOCOL_ERROR on https://localhost:3000.
-    if ((parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') && parsed.protocol === 'https:') {
-      parsed.protocol = 'http:';
-    }
     let pathname = parsed.pathname || '/';
     pathname = pathname.replace(/\/+$/, '') || '/';
     pathname = pathname.replace(/\/app(?:\.html)?$/i, '') || '/';
@@ -264,100 +251,34 @@ function sanitizeServerHistory(list) {
   return out;
 }
 
-function isDiscordAppHost(host) {
-  const h = String(host || '').toLowerCase();
-  return h === 'discord.com' || h === 'www.discord.com'
-    || h === 'canary.discord.com' || h === 'ptb.discord.com'
-    || h === 'discordapp.com' || h === 'www.discordapp.com'
-    || h === 'discord.gg' || h.endsWith('.discord.gg');
-}
-
-function isDiscordAppUrl(serverUrl) {
-  try { return isDiscordAppHost(new URL(serverUrl).hostname); }
-  catch { return false; }
-}
-
 function buildServerAppUrl(serverUrl) {
-  const normalized = normalizeServerUrl(serverUrl);
-  if (isDiscordAppUrl(normalized)) {
-    try {
-      const parsed = new URL(normalized);
-      const path = (parsed.pathname || '/').replace(/\/+$/, '') || '';
-      return parsed.origin + (path || '/app');
-    } catch {
-      return 'https://discord.com/app';
-    }
-  }
-  return normalized + '/app.html';
+  return normalizeServerUrl(serverUrl) + '/app.html';
 }
 
 // ── Single-Instance Lock ──────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
-  // IMPORTANT: do NOT run whenReady UI below when we lose the lock.
-  // Previously the loser still opened Login, then app.exit(0) ~1.5s later —
-  // looked exactly like "got in then frozen/crashed."
+  // The lock can fail transiently when the previous instance hasn't fully
+  // released its file handles yet (Windows error 32 / sharing violation).
+  // If this is the first attempt, wait 1.5 s for the old process to finish
+  // exiting, then relaunch automatically so the user isn't forced to click
+  // the icon a second time. If it still fails on the retry, another instance
+  // is genuinely running — focus it and quit.
   const isRetry = process.argv.includes('--relaunch-retry');
   if (!isRetry) {
-    console.warn('[Haven Desktop] Another instance holds the lock — retrying once in 1.5s');
     setTimeout(() => {
       app.relaunch({ args: process.argv.slice(1).concat(['--relaunch-retry']) });
       app.exit(0);
     }, 1500);
   } else {
-    console.warn('[Haven Desktop] Could not obtain single-instance lock — exiting');
     app.quit();
-    setTimeout(() => process.exit(0), 500).unref();
+    setTimeout(() => process.exit(0), 3000).unref();
   }
 } else {
   app.on('second-instance', () => {
     const win = mainWindow || welcomeWindow;
     if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
   });
-}
-
-// ── Main-process crash surface ─────────────────────────────
-// Electron's default dialog says "A JavaScript error occurred in the main
-// process" (often read as a "Java error"). Log + show the real message.
-function _mainCrashLog(kind, err) {
-  const msg = (err && (err.stack || err.message)) ? String(err.stack || err.message) : String(err);
-  console.error(`[Haven Desktop] ${kind}:`, msg);
-  try {
-    const logPath = path.join(app.getPath('userData'), 'main-crash.log');
-    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${kind}\n${msg}\n\n`);
-  } catch {}
-  return msg;
-}
-process.on('uncaughtException', (err) => {
-  const msg = _mainCrashLog('uncaughtException', err);
-  try {
-    if (app.isReady()) {
-      dialog.showErrorBox('Haven Desktop — main process error', msg.slice(0, 1800));
-    }
-  } catch {}
-});
-process.on('unhandledRejection', (reason) => {
-  _mainCrashLog('unhandledRejection', reason instanceof Error ? reason : new Error(String(reason)));
-});
-
-// Drop corrupt / tiny auto-update downloads so a bad 1.4.28 partial never
-// pretends to be installable (sha512 mismatch + ~1MB temp exe).
-function _purgeBadUpdaterCache() {
-  try {
-    const base = path.join(app.getPath('appData'), '..', 'Local', 'haven-desktop-updater');
-    const pending = path.join(base, 'pending');
-    if (!fs.existsSync(pending)) return;
-    for (const name of fs.readdirSync(pending)) {
-      const p = path.join(pending, name);
-      try {
-        const st = fs.statSync(p);
-        if (st.isFile() && /\.exe$/i.test(name) && st.size < 5 * 1024 * 1024) {
-          fs.unlinkSync(p);
-          console.warn('[AutoUpdate] removed incomplete download:', name, st.size);
-        }
-      } catch {}
-    }
-  } catch {}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -399,13 +320,7 @@ app.on('ready', () => {
 // ═══════════════════════════════════════════════════════════
 
 app.whenReady().then(async () => {
-  // Loser of single-instance lock must not create windows / host the server.
-  if (!gotLock) return;
-
-  // Only show a separate server console when explicitly requested (--show-server).
-  // IS_DEV used to force this on and made local Host look "crashed" when the
-  // detached console closed or fought over port 3000.
-  serverManager = new ServerManager(store, { showConsole: SHOW_SERVER });
+  serverManager = new ServerManager(store, { showConsole: SHOW_SERVER || IS_DEV });
   audioCapture  = new AudioCaptureManager();
   badgeIcon     = createBadgeIcon();
 
@@ -419,9 +334,7 @@ app.whenReady().then(async () => {
 
   // ── Auto-update check (issue #3) ──────────────────────
   if (autoUpdater) {
-    _purgeBadUpdaterCache();
     autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.on('update-available', (info) => {
       safeSend(getActiveContents() || welcomeWindow?.webContents, 'update:available', { version: info.version });
     });
@@ -432,16 +345,10 @@ app.whenReady().then(async () => {
       safeSend(getActiveContents() || welcomeWindow?.webContents, 'update:downloaded');
     });
     autoUpdater.on('error', (err) => {
-      const m = String(err && err.message || err || '');
-      console.error('[AutoUpdate] Error:', m);
-      if (/sha512|checksum|mismatch|ENOENT|EPERM/i.test(m)) {
-        _purgeBadUpdaterCache();
-      }
-      safeSend(getActiveContents() || welcomeWindow?.webContents, 'update:error', { message: m });
+      console.error('[AutoUpdate] Error:', err.message);
+      safeSend(getActiveContents() || welcomeWindow?.webContents, 'update:error', { message: err.message });
     });
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.warn('[AutoUpdate] check failed:', err && err.message);
-    });
+    autoUpdater.checkForUpdates().catch(() => {});
   }
 
   // ── Linux desktop integration (issue #3) ──────────────
@@ -473,32 +380,18 @@ app.whenReady().then(async () => {
   registerScreenShareHandler();
   registerVoiceShortcuts();
 
-  const prefs = store.get('userPrefs') || {};
-  // One-time fix: rewrite broken https://localhost history entries to http
-  try {
-    const hist = store.get('serverHistory') || [];
-    const fixed = sanitizeServerHistory(hist);
-    if (JSON.stringify(hist) !== JSON.stringify(fixed)) store.set('serverHistory', fixed);
-    if (prefs.serverUrl) {
-      const n = normalizeServerUrl(prefs.serverUrl);
-      if (n && n !== prefs.serverUrl) store.set('userPrefs.serverUrl', n);
-    }
-  } catch {}
+  const prefs = store.get('userPrefs');
 
-  const freshPrefs = store.get('userPrefs') || {};
-  if (freshPrefs.skipWelcome && freshPrefs.mode && freshPrefs.serverUrl) {
-    if (freshPrefs.mode === 'host' && freshPrefs.serverPath) {
-      const res = await serverManager.startServer(freshPrefs.serverPath);
-      if (!res.success) {
-        console.error('[Haven Desktop] Host start failed:', res.error);
-        createWelcomeWindow();
-        createTray();
-        return;
-      }
-      console.log(`[Haven Desktop] Server ready at ${res.url} (port ${res.port})`);
-      createAppWindow(res.url || normalizeServerUrl(freshPrefs.serverUrl));
+  if (prefs.skipWelcome && prefs.mode && prefs.serverUrl) {
+    // Returning user — remembered preferences
+    if (prefs.mode === 'host' && prefs.serverPath) {
+      const res = await serverManager.startServer(prefs.serverPath);
+      if (!res.success) { createWelcomeWindow(); createTray(); return; }
+      console.log(`[Haven Desktop] Server started at ${res.url} (port ${res.port})`);
+      // Use the fresh URL (protocol may have changed between http/https)
+      createAppWindow(res.url || prefs.serverUrl);
     } else {
-      createAppWindow(normalizeServerUrl(freshPrefs.serverUrl));
+      createAppWindow(prefs.serverUrl);
     }
   } else {
     createWelcomeWindow();
@@ -836,7 +729,7 @@ function createWelcomeWindow() {
     minWidth: 620, minHeight: 480,
     resizable: false,
     frame: false,
-    backgroundColor: store.get('themeColors.bg') || '#0d0d1a',
+    backgroundColor: '#0d0d1a',
     icon: ICON_PATH,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -850,7 +743,7 @@ function createWelcomeWindow() {
   welcomeWindow.loadFile(path.join(__dirname, '..', 'renderer', 'welcome.html'));
   welcomeWindow.once('ready-to-show', () => {
     welcomeWindow.show();
-    if (IS_DEV && process.env.HAVEN_DEVTOOLS === '1') welcomeWindow.webContents.openDevTools({ mode: 'detach' });
+    if (IS_DEV) welcomeWindow.webContents.openDevTools({ mode: 'detach' });
   });
   welcomeWindow.on('closed', () => { welcomeWindow = null; });
 }
@@ -863,7 +756,7 @@ function createAppWindow(serverUrl) {
       minWidth: 800, minHeight: 600,
       frame: true,
       autoHideMenuBar: !!store.get('hideMenuBar'),
-      backgroundColor: store.get('themeColors.bg') || '#0d0d1a',
+      backgroundColor: '#0d0d1a',
       icon: ICON_PATH,
       show: false,
       // The BrowserView per-server already disables backgroundThrottling, but
@@ -994,33 +887,22 @@ function ensureServerView(serverUrl, { background = false } = {}) {
   if (view) return view;
 
   {
-    const externalApp = isDiscordAppUrl(url);
     view = new BrowserView({
-      webPreferences: externalApp
-        ? {
-            // Official discord.com in its own tab — no Haven preload, no node.
-            contextIsolation: true,
-            nodeIntegration: false,
-            sandbox: true,
-            webSecurity: true,
-            spellcheck: true,
-            backgroundThrottling: false,
-          }
-        : {
-            preload: path.join(__dirname, 'app-preload.js'),
-            contextIsolation: false,
-            nodeIntegration: false,
-            sandbox: false,
-            webSecurity: true,
-            spellcheck: true,
-            // Prevent Chromium from suspending AudioContext and throttling timers
-            // when the window is minimised or loses focus.  Without this the
-            // _startAnalyser / _startLocalTalkDetection setIntervals are coalesced
-            // to 1-second buckets and the AudioContext is auto-suspended, which
-            // makes voice-activity indicators go dark until the window is restored
-            // AND the AudioContext is explicitly resumed.
-            backgroundThrottling: false,
-          },
+      webPreferences: {
+        preload: path.join(__dirname, 'app-preload.js'),
+        contextIsolation: false,
+        nodeIntegration: false,
+        sandbox: false,
+        webSecurity: true,
+        spellcheck: true,
+        // Prevent Chromium from suspending AudioContext and throttling timers
+        // when the window is minimised or loses focus.  Without this the
+        // _startAnalyser / _startLocalTalkDetection setIntervals are coalesced
+        // to 1-second buckets and the AudioContext is auto-suspended, which
+        // makes voice-activity indicators go dark until the window is restored
+        // AND the AudioContext is explicitly resumed.
+        backgroundThrottling: false,
+      },
     });
     mainWindow.addBrowserView(view);
     const [w, h] = mainWindow.getContentSize();
@@ -1065,14 +947,6 @@ function ensureServerView(serverUrl, { background = false } = {}) {
     // also gets reflected in the window title once the view is the active one.
     view.webContents.on('page-title-updated', _syncTitleIfActive);
 
-    if (externalApp) {
-      try {
-        const ua = view.webContents.getUserAgent()
-          .replace(/\s+Electron\/\S+/g, '')
-          .replace(/\s+Haven[^\s]*/gi, '');
-        if (ua) view.webContents.setUserAgent(ua);
-      } catch {}
-    }
     view.webContents.loadURL(buildServerAppUrl(url));
 
     // ── Forward renderer performance logs to main process console ──
@@ -1293,7 +1167,7 @@ function ensureServerView(serverUrl, { background = false } = {}) {
           if (!mainWindow || mainWindow.isDestroyed?.()) return;
           if (!view || !view.webContents) return;
           try { if (view.webContents.isDestroyed()) return; } catch { return; }
-          try { view.webContents.loadURL(buildServerAppUrl(url)); } catch {}
+          try { view.webContents.loadURL(url); } catch {}
         }, delay);
         return;
       }
@@ -1345,10 +1219,9 @@ function ensureServerView(serverUrl, { background = false } = {}) {
     ];
     view.webContents.on('will-navigate', (event, navUrl) => {
       try {
-        const nav = new URL(navUrl);
-        if (nav.origin === new URL(url).origin) return;
-        if (EMBED_ORIGINS.includes(nav.origin)) return;
-        if (externalApp && isDiscordAppHost(nav.hostname)) return;
+        const navOrigin = new URL(navUrl).origin;
+        if (navOrigin === new URL(url).origin) return;
+        if (EMBED_ORIGINS.includes(navOrigin)) return;
         event.preventDefault();
         shell.openExternal(navUrl);
       } catch {}
@@ -1360,10 +1233,6 @@ function ensureServerView(serverUrl, { background = false } = {}) {
     view.webContents.setWindowOpenHandler(({ url: openUrl }) => {
       try {
         const parsedOpen = new URL(openUrl);
-        if (externalApp && isDiscordAppHost(parsedOpen.hostname)) {
-          try { view.webContents.loadURL(openUrl); } catch {}
-          return { action: 'deny' };
-        }
         const parsedServer = new URL(url);
         if (parsedOpen.origin === parsedServer.origin) {
           // ── Issue #5306: in-app navigation for Haven message/channel links ──
@@ -1597,9 +1466,7 @@ function ensureServerView(serverUrl, { background = false } = {}) {
     }, 30000); // check every 30 seconds
 
     // Only open DevTools for the first server view in dev mode
-    if (IS_DEV && process.env.HAVEN_DEVTOOLS === '1' && serverViews.size === 0) {
-      view.webContents.openDevTools({ mode: 'detach' });
-    }
+    if (IS_DEV && serverViews.size === 0) view.webContents.openDevTools({ mode: 'detach' });
     serverViews.set(url, view);
   }
 
@@ -1617,20 +1484,6 @@ function scheduleBackgroundServerPreload(activeServerUrl) {
   // pre-loading entirely, restoring the old lazy behavior.
   const enabled = store.get('backgroundServerConnections');
   if (enabled === false) return;
-
-  // Local host (Braid / Start Haven.bat): do NOT spin remote OG/Community
-  // BrowserViews unless the user explicitly set backgroundServerConnections=true.
-  // Those extra Chromium+Socket.IO sessions regularly freeze/OOM Windows after
-  // login when the active tab is localhost.
-  let activeIsLocal = false;
-  try {
-    const h = new URL(normalizeServerUrl(activeServerUrl)).hostname;
-    activeIsLocal = (h === 'localhost' || h === '127.0.0.1');
-  } catch {}
-  if (activeIsLocal && enabled !== true) {
-    console.log('[Haven Desktop] Skipping background server preload (local session; set backgroundServerConnections=true to enable)');
-    return;
-  }
 
   // Wait a few seconds so the active view's first paint isn't competing
   // with N background renderers spinning up at the same moment.
@@ -2217,31 +2070,7 @@ function registerScreenShareHandler() {
 // IPC Handlers
 // ═══════════════════════════════════════════════════════════
 
-function cssColorToHex(s) {
-  if (!s || typeof s !== 'string') return null;
-  const v = s.trim();
-  if (/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) {
-    const h = v.slice(1);
-    if (h.length === 3 || h.length === 4) return `#${[...h.slice(0, 3)].map((c) => c + c).join('')}`;
-    return `#${h.slice(0, 6)}`;
-  }
-  const m = v.match(/rgba?\(\s*([\d.]+)\s*[, ]+\s*([\d.]+)\s*[, ]+\s*([\d.]+)/i);
-  if (!m) return null;
-  const hex = (n) => Math.round(Number(n)).toString(16).padStart(2, '0');
-  return `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
-}
-
-function applyWindowTheme({ bg, accent } = {}) {
-  const color = cssColorToHex(bg) || store.get('themeColors.bg') || '#0d0d1a';
-  store.set('themeColors', { bg: color, accent: cssColorToHex(accent) || store.get('themeColors.accent') || '#7c5cfc' });
-  for (const win of [mainWindow, welcomeWindow]) {
-    if (win && !win.isDestroyed()) win.setBackgroundColor(color);
-  }
-}
-
 function registerIPC() {
-
-  ipcMain.on('theme:colors', (_e, payload) => applyWindowTheme(payload || {}));
 
   // ── Server Management ─────────────────────────────────
   ipcMain.handle('server:detect',      ()        => serverManager.detectServer());
@@ -2501,29 +2330,6 @@ function registerIPC() {
       if (img.isEmpty()) return { ok: false, reason: 'decoded-empty' };
       clipboard.writeImage(img);
       return { ok: true };
-    } catch (err) {
-      return { ok: false, reason: String(err && err.message || err) };
-    }
-  });
-
-  ipcMain.handle('dialog:save-image', async (e, { payload, filename } = {}) => {
-    try {
-      if (!payload || typeof payload !== 'string') return { ok: false, reason: 'no-payload' };
-      const raw = payload.includes(',') ? payload.slice(payload.lastIndexOf(',') + 1) : payload;
-      const buf = Buffer.from(String(raw).replace(/\s+/g, ''), 'base64');
-      if (!buf.length) return { ok: false, reason: 'empty-image' };
-      const leaf = String(filename || 'haven-image.png').replace(/\\/g, '/').split('/').pop() || 'haven-image.png';
-      const name = leaf.replace(/[^A-Za-z0-9._-]/g, '') || 'haven-image.png';
-      const wc = e && e.sender;
-      const win = (wc && !wc.isDestroyed() && BrowserWindow.fromWebContents(wc)) || mainWindow;
-      const picked = await dialog.showSaveDialog(win && !win.isDestroyed() ? win : undefined, {
-        title: 'Save image',
-        defaultPath: name,
-        filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
-      });
-      if (picked.canceled || !picked.filePath) return { ok: false, cancelled: true };
-      fs.writeFileSync(picked.filePath, buf);
-      return { ok: true, path: picked.filePath };
     } catch (err) {
       return { ok: false, reason: String(err && err.message || err) };
     }
