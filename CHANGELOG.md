@@ -43,6 +43,9 @@ Level with Electron 1.4.30.
   shortcut settings were opened. They are registered at startup.
 - **A bad remembered server left only a tray icon.** Startup falls back to the
   Welcome window.
+- **Welcome window buttons match Amni OS.** Minimize and close use the same
+  line glyphs, spacing and hover tile as the system title bar and Amni-Browse
+  (close turns the theme red), instead of Haven-purple text glyphs.
 
 ## v2.5.0-tauri (2026-09-20)
 

@@ -37,7 +37,7 @@ body {
   align-items: center;
   justify-content: space-between;
   height: 34px;
-  padding: 0 10px;
+  padding: 0 5px 0 10px;
   background: rgba(10, 10, 20, .8);
   -webkit-app-region: drag;
   flex-shrink: 0;
@@ -51,19 +51,36 @@ body {
 
 .titlebar-controls {
   display: flex;
-  gap: 4px;
+  align-self: stretch;
   -webkit-app-region: no-drag;
 }
 
+/* Same buttons as the Amni OS title bar (and Amni-Browse): 11px line glyphs
+   at 1.4px, 29px apart, 14px from the edge; hover is a 26px tile. */
 .tb-btn {
-  width: 32px; height: 24px;
-  border: none; background: transparent;
-  color: var(--text-dim); font-size: 13px;
-  border-radius: 4px; cursor: pointer;
+  position: relative;
+  width: 29px; height: 100%;
+  border: none; background: transparent; padding: 0;
+  color: rgba(237, 239, 242, .78);
+  cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
-.tb-btn:hover { background: rgba(255,255,255,.08); color: var(--text); }
-.tb-close:hover { background: #e74c5f; color: #fff; }
+.tb-btn::before {
+  content: "";
+  position: absolute; left: 50%; top: 50%;
+  width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border-radius: 4px; background: transparent;
+  transition: background .18s ease;
+}
+.tb-btn svg {
+  position: relative; width: 11px; height: 11px;
+  fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: butt;
+}
+.tb-btn:hover { color: #EDEFF2; }
+.tb-btn:hover::before { background: rgba(237, 239, 242, .08); }
+.tb-btn:active::before { background: rgba(237, 239, 242, .14); }
+.tb-close:hover { color: #1F0707; }
+.tb-close:hover::before { background: #FF6B6B; }
 
 /* ─── Pages ────────────────────────────────────────────── */
 
