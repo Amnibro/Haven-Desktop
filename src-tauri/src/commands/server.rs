@@ -1,7 +1,7 @@
 use crate::state::{self, AppState};
 use serde_json::json;
 use std::sync::mpsc;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
@@ -15,17 +15,12 @@ pub fn server_detect(app: AppHandle, state: State<AppState>) -> Result<serde_jso
     Ok(serde_json::to_value(result).unwrap_or(json!({ "found": false })))
 }
 
+/// Async so the up-to-15 s wait for the server to come up runs off the GTK
+/// main thread; as a sync command it froze the window and the log stream.
 #[tauri::command]
-pub fn server_start(
-    app: AppHandle,
-    state: State<AppState>,
-    dir: String,
-) -> Result<serde_json::Value, String> {
+pub async fn server_start(app: AppHandle, dir: String) -> Result<serde_json::Value, String> {
     let (tx, rx) = mpsc::channel::<String>();
-    {
-        let mut mgr = state.server.lock();
-        mgr.set_log_sender(tx);
-    }
+    app.state::<AppState>().server.lock().set_log_sender(tx);
 
     let handle = app.clone();
     std::thread::spawn(move || {
@@ -34,8 +29,17 @@ pub fn server_start(
         }
     });
 
-    let mut mgr = state.server.lock();
-    let result = mgr.start_server(&dir);
+    let worker = app.clone();
+    let start_dir = dir.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        worker
+            .state::<AppState>()
+            .server
+            .lock()
+            .start_server(&start_dir)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     if result.success {
         let mut prefs = state::get_user_prefs(&app)?;
         if let Some(obj) = prefs.as_object_mut() {
@@ -58,12 +62,14 @@ pub fn server_status(state: State<AppState>) -> Result<serde_json::Value, String
     Ok(serde_json::to_value(mgr.status()).unwrap_or(json!({})))
 }
 
+/// Async so the folder picker runs off the main thread (see dialogs.rs).
 #[tauri::command]
-pub fn server_browse(app: AppHandle) -> Result<Option<String>, String> {
-    let folder = app
-        .dialog()
-        .file()
-        .set_title(state::t(&app, "dialog.selectServerDirectory"))
-        .blocking_pick_folder();
+pub async fn server_browse(app: AppHandle) -> Result<Option<String>, String> {
+    let title = state::t(&app, "dialog.selectServerDirectory");
+    let folder = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog().file().set_title(title).blocking_pick_folder()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(folder.map(|p| p.to_string()))
 }

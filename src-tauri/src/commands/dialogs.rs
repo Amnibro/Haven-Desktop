@@ -32,53 +32,71 @@ fn safe_filename(name: &str) -> String {
     }
 }
 
-#[tauri::command]
-pub fn dialog_alert(app: AppHandle, message: String) -> bool {
-    app.dialog()
-        .message(message)
-        .kind(MessageDialogKind::Info)
-        .title("Haven")
-        .buttons(MessageDialogButtons::Ok)
-        .blocking_show();
-    true
+// The dialog commands are async so Tauri runs them off the GTK main thread.
+// tauri-plugin-dialog shows every dialog on the main thread and its
+// blocking_* calls wait on a channel for the answer; called from a sync
+// command (which runs on the main thread) that wait can never finish, and the
+// whole app froze until the desktop killed it.
+async fn off_main<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn dialog_confirm(app: AppHandle, message: String) -> bool {
-    app.dialog()
-        .message(message)
-        .kind(MessageDialogKind::Info)
-        .title("Haven")
-        .buttons(MessageDialogButtons::OkCancel)
-        .blocking_show()
+pub async fn dialog_alert(app: AppHandle, message: String) -> Result<bool, String> {
+    off_main(move || {
+        app.dialog()
+            .message(message)
+            .kind(MessageDialogKind::Info)
+            .title("Haven")
+            .buttons(MessageDialogButtons::Ok)
+            .blocking_show();
+        true
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn dialog_prompt(
+pub async fn dialog_confirm(app: AppHandle, message: String) -> Result<bool, String> {
+    off_main(move || {
+        app.dialog()
+            .message(message)
+            .kind(MessageDialogKind::Info)
+            .title("Haven")
+            .buttons(MessageDialogButtons::OkCancel)
+            .blocking_show()
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn dialog_prompt(
     app: AppHandle,
     message: String,
     default_value: Option<String>,
-) -> Option<String> {
-    let default_value = default_value.unwrap_or_default();
-    let ok = app
-        .dialog()
-        .message(format!(
-            "{message}{}",
-            if default_value.is_empty() {
-                String::new()
-            } else {
-                format!("\n\n{}", state::t(&app, "dialog.defaultValue").replace("{value}", &default_value))
-            }
-        ))
-        .kind(MessageDialogKind::Info)
-        .title("Haven")
-        .buttons(MessageDialogButtons::OkCancel)
-        .blocking_show();
-    if ok {
-        Some(default_value)
-    } else {
-        None
-    }
+) -> Result<Option<String>, String> {
+    off_main(move || {
+        let default_value = default_value.unwrap_or_default();
+        let ok = app
+            .dialog()
+            .message(format!(
+                "{message}{}",
+                if default_value.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n\n{}", state::t(&app, "dialog.defaultValue").replace("{value}", &default_value))
+                }
+            ))
+            .kind(MessageDialogKind::Info)
+            .title("Haven")
+            .buttons(MessageDialogButtons::OkCancel)
+            .blocking_show();
+        if ok {
+            Some(default_value)
+        } else {
+            None
+        }
+    })
+    .await
 }
 
 #[tauri::command]
@@ -94,9 +112,25 @@ pub fn clipboard_write_image(app: AppHandle, payload: String) -> Result<serde_js
     if payload.is_empty() {
         return Ok(serde_json::json!({ "ok": false, "reason": "no-payload" }));
     }
-    match app.clipboard().write_text(&payload) {
-        Ok(()) => Ok(serde_json::json!({ "ok": true, "reason": "text-fallback" })),
-        Err(e) => Ok(serde_json::json!({ "ok": false, "reason": e.to_string() })),
+    // Put a real picture on the clipboard. This used to write the base64 text
+    // and report ok, so "Copy image" pasted a wall of text and the web app
+    // skipped its own fallback. Anything but PNG reports not-ok so it runs.
+    let bytes = match decode_image_payload(&payload) {
+        Ok(b) => b,
+        Err(e) => return Ok(json!({ "ok": false, "reason": e })),
+    };
+    let Ok(pm) = tiny_skia::Pixmap::decode_png(&bytes) else {
+        return Ok(json!({ "ok": false, "reason": "not-png" }));
+    };
+    let mut rgba = Vec::with_capacity(pm.data().len());
+    for px in pm.pixels() {
+        let c = px.demultiply();
+        rgba.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
+    }
+    let image = tauri::image::Image::new_owned(rgba, pm.width(), pm.height());
+    match app.clipboard().write_image(&image) {
+        Ok(()) => Ok(json!({ "ok": true })),
+        Err(e) => Ok(json!({ "ok": false, "reason": e.to_string() })),
     }
 }
 
@@ -130,7 +164,7 @@ pub fn clipboard_read_image(app: AppHandle) -> Result<serde_json::Value, String>
 }
 
 #[tauri::command]
-pub fn save_image(
+pub async fn save_image(
     app: AppHandle,
     payload: String,
     filename: Option<String>,
@@ -144,13 +178,17 @@ pub fn save_image(
     }
     let name = safe_filename(filename.as_deref().unwrap_or("haven-image.png"));
     let ext = name.rsplit('.').next().unwrap_or("png");
-    let picked = app
-        .dialog()
-        .file()
-        .set_title(state::t(&app, "dialog.saveImage"))
-        .set_file_name(&name)
-        .add_filter("Image", &[ext, "png", "jpg", "jpeg", "gif", "webp"])
-        .blocking_save_file();
+    let ext = ext.to_string();
+    let title = state::t(&app, "dialog.saveImage");
+    let picked = off_main(move || {
+        app.dialog()
+            .file()
+            .set_title(title)
+            .set_file_name(&name)
+            .add_filter("Image", &[ext.as_str(), "png", "jpg", "jpeg", "gif", "webp"])
+            .blocking_save_file()
+    })
+    .await?;
     let Some(picked) = picked else {
         return Ok(json!({ "ok": false, "cancelled": true }));
     };

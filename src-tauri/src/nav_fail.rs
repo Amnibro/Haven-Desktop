@@ -28,7 +28,7 @@ pub fn server_tcp_reachable(server_url: &str) -> bool {
 }
 
 pub fn is_desktop_asset_url(url: &Url) -> bool {
-    if url.scheme() == "data" {
+    if url.scheme() == "data" || url.scheme() == "tauri" {
         return true;
     }
     if url.scheme() == "about" && url.as_str().contains("blank") {
@@ -68,13 +68,22 @@ pub fn haven_nav_action(url: &Url) -> Option<String> {
         .map(|action| action.to_string())
 }
 
-pub fn haven_nav_href(action: &str) -> String {
-    let base = if cfg!(debug_assertions) {
+/// Where the bundled desktop pages are served. Tauri uses
+/// http://tauri.localhost on Windows but the tauri:// scheme on Linux and
+/// macOS; hard-coding the Windows origin left Linux release builds on
+/// "Could not connect to tauri.localhost" with no Retry or Home buttons.
+fn app_origin() -> &'static str {
+    if cfg!(debug_assertions) {
         "http://localhost:14370"
-    } else {
+    } else if cfg!(windows) {
         "http://tauri.localhost"
-    };
-    format!("{base}/__haven_nav__/{action}")
+    } else {
+        "tauri://localhost"
+    }
+}
+
+pub fn haven_nav_href(action: &str) -> String {
+    format!("{}/__haven_nav__/{action}", app_origin())
 }
 
 pub fn other_server_url(app: &AppHandle) -> Option<String> {
@@ -174,12 +183,7 @@ fn error_page_html(server_url: &str, primary: Option<&str>) -> String {
 
 fn connection_error_page_url(server_url: &str) -> Result<Url, String> {
     let encoded: String = url::form_urlencoded::byte_serialize(server_url.as_bytes()).collect();
-    let base = if cfg!(debug_assertions) {
-        "http://localhost:14370/connection-error.html"
-    } else {
-        "http://tauri.localhost/connection-error.html"
-    };
-    Url::parse(&format!("{base}?url={encoded}")).map_err(|e| e.to_string())
+    Url::parse(&format!("{}/connection-error.html?url={encoded}", app_origin())).map_err(|e| e.to_string())
 }
 
 pub fn show_connection_error(app: &AppHandle, server_url: &str) {

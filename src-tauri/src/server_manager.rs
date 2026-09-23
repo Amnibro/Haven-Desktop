@@ -127,8 +127,9 @@ impl ServerManager {
             };
         }
 
-        let _ = kill_process_on_port(3000);
-
+        // find_port skips busy ports. This used to `kill -9` whatever lsof
+        // matched on :3000, which includes any process merely *connected* to
+        // a remote :3000 (a dev server, a browser tab, WebKit itself).
         let port = match find_port(3000) {
             Some(p) => p,
             None => {
@@ -288,18 +289,3 @@ fn find_port(start: u16) -> Option<u16> {
     None
 }
 
-fn kill_process_on_port(port: u16) {
-    #[cfg(target_os = "linux")]
-    {
-        if let Ok(output) = Command::new("lsof").args(["-ti", &format!(":{port}")]).output() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            for pid in text.split_whitespace() {
-                let _ = Command::new("kill").args(["-9", pid]).status();
-            }
-        }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let _ = port;
-    }
-}

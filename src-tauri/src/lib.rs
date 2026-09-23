@@ -131,6 +131,9 @@ pub fn run() {
                 theme_icon::apply(app.handle(), bg, fg);
             }
             check_for_update(app.handle().clone());
+            // Saved mute / deafen / push-to-talk keys were only registered when
+            // the settings page re-saved them, so after a restart they did nothing.
+            let _ = commands::shortcuts_register(app.handle().clone(), serde_json::json!({}));
             if let Some(welcome) = app.get_webview_window("welcome") {
                 commands::accept_self_signed(&welcome);
             }
@@ -150,7 +153,13 @@ pub fn run() {
                 if let Some(url) = remembered {
                     let handle = app.handle().clone();
                     std::thread::spawn(move || {
-                        let _ = commands::open_app_window(&handle, &url);
+                        // A failure here used to leave nothing but a tray icon.
+                        if commands::open_app_window(&handle, &url).is_err() {
+                            if let Some(welcome) = handle.get_webview_window("welcome") {
+                                let _ = welcome.show();
+                                let _ = welcome.set_focus();
+                            }
+                        }
                     });
                 } else if let Some(welcome) = app.get_webview_window("welcome") {
                     let _ = welcome.show();

@@ -44,10 +44,62 @@ pub fn accept_self_signed(window: &tauri::WebviewWindow) {
                 settings.set_enable_webrtc(true);
                 settings.set_enable_media_stream(true);
             }
+            attach_script_dialogs(&w.inner());
         });
     }
     #[cfg(not(target_os = "linux"))]
     let _ = window;
+}
+
+/// alert / confirm / prompt as real GTK dialogs. WebKitGTK's own in-view
+/// overlay never appeared in this app, so confirm() answered on its own and
+/// Haven's "remove server?" / "delete user?" checks never really asked.
+/// Answering from the signal keeps the page's call synchronous, like a browser.
+#[cfg(target_os = "linux")]
+fn attach_script_dialogs(view: &webkit2gtk::WebView) {
+    use gtk::prelude::*;
+    use webkit2gtk::{ScriptDialogType, WebViewExt};
+    view.connect_script_dialog(|view, dialog| {
+        let kind = dialog.dialog_type();
+        let message = dialog.message().map(|m| m.to_string()).unwrap_or_default();
+        let parent = view.toplevel().and_then(|t| t.downcast::<gtk::Window>().ok());
+        let (msg_type, buttons) = match kind {
+            ScriptDialogType::Alert => (gtk::MessageType::Info, gtk::ButtonsType::Ok),
+            _ => (gtk::MessageType::Question, gtk::ButtonsType::OkCancel),
+        };
+        let md = gtk::MessageDialog::new(
+            parent.as_ref(),
+            gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
+            msg_type,
+            buttons,
+            &message,
+        );
+        md.set_title("Haven");
+        let entry = (kind == ScriptDialogType::Prompt).then(|| {
+            let entry = gtk::Entry::new();
+            entry.set_text(dialog.prompt_get_default_text().as_deref().unwrap_or(""));
+            entry.set_activates_default(true);
+            md.content_area().pack_end(&entry, false, false, 6);
+            entry.show();
+            entry
+        });
+        md.set_default_response(gtk::ResponseType::Ok);
+        let ok = md.run() == gtk::ResponseType::Ok;
+        match kind {
+            ScriptDialogType::Confirm | ScriptDialogType::BeforeUnloadConfirm => {
+                dialog.confirm_set_confirmed(ok)
+            }
+            // Leaving the text unset is how WebKit reports a cancelled prompt (null).
+            ScriptDialogType::Prompt if ok => {
+                if let Some(entry) = &entry {
+                    dialog.prompt_set_text(&entry.text());
+                }
+            }
+            _ => {}
+        }
+        unsafe { md.destroy() };
+        true
+    });
 }
 
 fn same_origin(url: &Url, server: &str) -> bool {
@@ -214,25 +266,27 @@ fn handle_error_nav(app: &AppHandle, action: &str) {
     let app = app.clone();
     let action = action.to_string();
     // Finish cancelling the click navigation before we show/close windows.
-    std::thread::spawn(move || {
-        let on_main = app.clone();
-        let _ = app.run_on_main_thread(move || match action.as_str() {
-            "welcome" => {
+    // Retry and "back to my server" probe the server over TCP first, so they
+    // stay on this worker thread instead of blocking the GTK main thread.
+    std::thread::spawn(move || match action.as_str() {
+        "welcome" => {
+            let on_main = app.clone();
+            let _ = app.run_on_main_thread(move || {
                 let _ = go_back_to_welcome(&on_main);
+            });
+        }
+        "retry" => {
+            let url = app.state::<AppState>().active_server_url.lock().clone();
+            if let Some(url) = url {
+                let _ = open_app_window(&app, &url);
             }
-            "retry" => {
-                let url = on_main.state::<AppState>().active_server_url.lock().clone();
-                if let Some(url) = url {
-                    let _ = open_app_window(&on_main, &url);
-                }
+        }
+        "server" => {
+            if let Some(url) = crate::nav_fail::other_server_url(&app) {
+                let _ = switch_server(&app, &url);
             }
-            "server" => {
-                if let Some(url) = crate::nav_fail::other_server_url(&on_main) {
-                    let _ = nav_switch_server(on_main.clone(), on_main.state::<AppState>(), url);
-                }
-            }
-            _ => {}
-        });
+        }
+        _ => {}
     });
 }
 
@@ -288,8 +342,11 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+// The nav commands are async so Tauri runs them off the GTK main thread:
+// each one probes the server over TCP first (up to 1.5 s per address), and a
+// sync command would freeze the whole window for that long.
 #[tauri::command]
-pub fn nav_open_app(app: AppHandle, server_url: String) -> Result<(), String> {
+pub async fn nav_open_app(app: AppHandle, server_url: String) -> Result<(), String> {
     open_app_window(&app, &server_url)
 }
 
@@ -299,35 +356,34 @@ pub fn nav_back_to_welcome(app: AppHandle, _state: State<AppState>) -> Result<()
 }
 
 #[tauri::command]
-pub fn nav_switch_server(
-    app: AppHandle,
-    state: State<AppState>,
-    server_url: String,
-) -> Result<(), String> {
-    let normalized = state::normalize_server_url(&server_url)
+pub async fn nav_switch_server(app: AppHandle, server_url: String) -> Result<(), String> {
+    switch_server(&app, &server_url)
+}
+
+fn switch_server(app: &AppHandle, server_url: &str) -> Result<(), String> {
+    let normalized = state::normalize_server_url(server_url)
         .ok_or_else(|| "invalid server URL".to_string())?;
-    *state.active_server_url.lock() = Some(normalized.clone());
+    *app.state::<AppState>().active_server_url.lock() = Some(normalized.clone());
     if !crate::nav_fail::server_tcp_reachable(&normalized) {
-        show_or_create_connection_error(&app, &normalized)?;
+        show_or_create_connection_error(app, &normalized)?;
         return Ok(());
     }
     let app_url = state::build_server_app_url(&normalized);
     let parsed: Url = app_url.parse().map_err(|e: url::ParseError| e.to_string())?;
-    show_or_create_server(&app, parsed)
+    show_or_create_server(app, parsed)
 }
 
 #[tauri::command]
-pub fn nav_change_primary_server(
-    app: AppHandle,
-    state: State<AppState>,
-    server_url: String,
-) -> Result<(), String> {
+pub async fn nav_change_primary_server(app: AppHandle, server_url: String) -> Result<(), String> {
     let normalized = state::normalize_server_url(&server_url)
         .ok_or_else(|| "invalid server URL".to_string())?;
-    *state.primary_server_url.lock() = Some(normalized.clone());
-    *state.active_server_url.lock() = Some(normalized.clone());
-    state.server_badges.lock().clear();
-    state.known_server_urls.lock().clear();
+    {
+        let state = app.state::<AppState>();
+        *state.primary_server_url.lock() = Some(normalized.clone());
+        *state.active_server_url.lock() = Some(normalized.clone());
+        state.server_badges.lock().clear();
+        state.known_server_urls.lock().clear();
+    }
 
     let mut prefs = state::get_user_prefs(&app)?;
     if let Some(obj) = prefs.as_object_mut() {

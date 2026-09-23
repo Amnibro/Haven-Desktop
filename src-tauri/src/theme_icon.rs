@@ -59,6 +59,11 @@ pub fn lookup(theme: &str) -> Option<(u32, u32)> {
 pub fn parse_css_color(s: &str) -> Option<u32> {
     let s = s.trim();
     if let Some(hex) = s.strip_prefix('#') {
+        // Byte slicing below needs ASCII: a page colour like "#aaé" would
+        // otherwise panic mid-character and, with panic = "abort", kill the app.
+        if !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
         return match hex.len() {
             6 | 8 => u32::from_str_radix(&hex[..6], 16).ok(),
             3 | 4 => {
@@ -222,4 +227,23 @@ pub fn theme_colors(app: AppHandle, theme: Option<String>, bg: Option<String>, a
     }
     apply(&app, bg, fg);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_css_color;
+
+    #[test]
+    fn parses_hex_and_rgb() {
+        assert_eq!(parse_css_color("#c89b4e"), Some(0xc89b4e));
+        assert_eq!(parse_css_color("#fff"), Some(0xffffff));
+        assert_eq!(parse_css_color("rgb(200, 155, 78)"), Some(0xc89b4e));
+    }
+
+    #[test]
+    fn non_ascii_hex_is_rejected_not_a_panic() {
+        assert_eq!(parse_css_color("#aaé"), None);
+        assert_eq!(parse_css_color("#aaaaaéx"), None);
+        assert_eq!(parse_css_color("#ééé"), None);
+    }
 }

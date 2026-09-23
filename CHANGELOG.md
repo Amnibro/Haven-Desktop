@@ -2,6 +2,48 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.5.1-tauri (2026-09-22)
+
+Level with Electron 1.4.30.
+
+### Fixed
+- **Removing a server froze the app until it was killed.** Older Haven servers
+  ask with the page's `confirm()`. The dialog commands were synchronous, so they
+  ran on the GTK main thread, and `blocking_show()` waited there for a dialog
+  that needed that same thread. The dialog and file-picker commands are async
+  now. Any `alert`, `confirm` or `prompt` froze the app the same way.
+- **"Are you sure?" never waited for an answer.** The bridge and
+  tauri-plugin-dialog both replaced `confirm()` with an async version, so it
+  returned a Promise and `if (!confirm(...)) return;` carried on regardless:
+  deleting users, restoring backups, removing servers. Outside macOS the bridge
+  puts the page's own `alert`/`confirm`/`prompt` back, and on Linux the app
+  answers WebKit's `script-dialog` signal with a GTK dialog, so `confirm()`
+  returns true or false and `prompt()` returns what was typed.
+- **A theme colour could crash the app.** `#aaé` sliced a UTF-8 character in
+  half and, with `panic = "abort"`, killed the process. Non-hex colours are
+  ignored.
+- **The connection-error page was blank on Linux.** It was served from
+  `http://tauri.localhost`, which only exists on Windows; Linux and macOS use
+  `tauri://localhost`.
+- **Switching servers and Retry froze the window.** The server reachability
+  check (up to 1.5 s per address) ran on the main thread. The server-switch
+  commands are async and Retry and "Go Back to My Server" run on a worker.
+- **Pasting a picture on Linux was still blocked.** `clipboard_read_image` was
+  missing from the command permissions, so the 2.5.0 paste fix never ran.
+- **"Copy image" copied base64 text.** It writes a real image now.
+- **Two tray icons.** The config and `tray.rs` each made one; the config one
+  is gone, so theme colours land on the icon with the menu.
+- **A removed server came back.** Removing it now clears it as the primary
+  server, the startup server and its badge.
+- **Starting a local server could kill other programs.** It ran `kill -9` on
+  everything `lsof` matched on port 3000, including clients of a remote :3000.
+  That is removed (a free port is picked anyway) and the start wait no longer
+  blocks the window.
+- **Mute, deafen and push-to-talk keys did nothing after a restart** until the
+  shortcut settings were opened. They are registered at startup.
+- **A bad remembered server left only a tray icon.** Startup falls back to the
+  Welcome window.
+
 ## v2.5.0-tauri (2026-09-20)
 
 Level with Electron 1.4.30. Linux (Amni OS) only; Windows behaviour is unchanged.

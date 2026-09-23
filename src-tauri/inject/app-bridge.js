@@ -485,17 +485,43 @@
     window.dispatchEvent(new CustomEvent('haven-server-badges', { detail: badgeMap }));
   });
 
-  // ── Dialog overrides (async via invoke; callers should await when possible) ──
-  window.alert = (message) => {
-    void invoke('dialog_alert', { message: String(message ?? '') });
-  };
-  window.confirm = (message) =>
-    invoke('dialog_confirm', { message: String(message ?? '') });
-  window.prompt = (message, defaultValue) =>
-    invoke('dialog_prompt', {
-      message: String(message ?? ''),
-      defaultValue: defaultValue == null ? null : String(defaultValue),
-    });
+  // ── Dialogs ──────────────────────────────────────────────
+  // WebKitGTK and WebView2 show alert/confirm/prompt themselves and block the
+  // page like a browser does, so confirm() returns a real boolean and
+  // prompt() returns what was typed. Routing them through invoke made
+  // confirm() return a Promise, which is always truthy: every
+  // `if (!confirm(...)) return;` in Haven went ahead without asking, and the
+  // native dialog it opened froze the app (removing a server did both).
+  // tauri-plugin-dialog also swaps in async versions on every page, so the
+  // browser's own functions are taken from a hidden blank iframe, which no
+  // init script touches, and put back.
+  // Only macOS keeps the invoke path, since WKWebView needs a UI delegate.
+  if (!/Mac/.test(navigator.platform)) {
+    let host = null;
+    const nativeDialog = (name) => {
+      if (!host || !host.isConnected || !host.contentWindow) {
+        host = document.createElement('iframe');
+        host.style.display = 'none';
+        host.setAttribute('aria-hidden', 'true');
+        (document.body || document.documentElement).appendChild(host);
+      }
+      return host.contentWindow[name].bind(host.contentWindow);
+    };
+    window.alert = (message) => nativeDialog('alert')(message);
+    window.confirm = (message) => nativeDialog('confirm')(message);
+    window.prompt = (message, defaultValue) => nativeDialog('prompt')(message, defaultValue);
+  } else {
+    window.alert = (message) => {
+      void invoke('dialog_alert', { message: String(message ?? '') });
+    };
+    window.confirm = (message) =>
+      invoke('dialog_confirm', { message: String(message ?? '') });
+    window.prompt = (message, defaultValue) =>
+      invoke('dialog_prompt', {
+        message: String(message ?? ''),
+        defaultValue: defaultValue == null ? null : String(defaultValue),
+      });
+  }
 
   // ── Fullscreen overrides ─────────────────────────────────
   (function patchFullscreen() {
