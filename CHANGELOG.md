@@ -2,6 +2,10 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.5.2-tauri (2026-09-24)
+
+- **Pasting a picture works on Linux again.** The WebKitGTK paste rescue read the clipboard image fine, then turned the PNG data URL into a blob with `fetch()`. Haven's CSP (`connect-src 'self' ws: wss: https:`) has no `data:`, so the fetch was blocked and the empty `.catch()` hid it: Ctrl+V and right-click → Paste did nothing. The bridge now decodes the base64 directly, and logs rescue failures to the console instead of swallowing them.
+
 ## v2.5.1-tauri (2026-09-22)
 
 Level with Electron 1.4.30.

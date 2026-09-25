@@ -607,15 +607,16 @@
       const target = e.target;
       busy = true;
       invoke('clipboard_read_image').then(async (res) => {
-        if (!res || !res.ok || !res.dataUrl) return;
-        const blob = await (await fetch(res.dataUrl)).blob();
-        const file = new File([blob], 'pasted-image.png', { type: 'image/png' });
+        if (!res || !res.ok || !res.dataUrl) return console.warn('[haven] clipboard image unavailable:', res && res.reason);
+        const bin = atob(res.dataUrl.slice(res.dataUrl.indexOf(',') + 1));
+        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+        const file = new File([bytes], 'pasted-image.png', { type: 'image/png' });
         const replay = new DataTransfer();
         replay.items.add(file);
         const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: replay });
         ev.__havenReplay = true;
         (target || document.activeElement || document.body).dispatchEvent(ev);
-      }).catch(() => {}).finally(() => { busy = false; });
+      }).catch((err) => console.warn('[haven] paste rescue failed:', err)).finally(() => { busy = false; });
     }, true);
   })();
 
