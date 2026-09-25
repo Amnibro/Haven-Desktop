@@ -12,6 +12,32 @@ use crate::{webview::AppWebview, window::AppWindow};
 
 use super::utils::{atom, with_cef_display};
 
+pub(crate) fn claim_keyboard_focus(xid: u64, force: bool) {
+  if xid == 0 {
+    return;
+  }
+  with_cef_display((), |xlib, display| unsafe {
+    let (mut focus, mut revert) = (0, 0);
+    (xlib.XGetInputFocus)(display, &mut focus, &mut revert);
+    let mut owned = force;
+    let mut current = xid as xlib::Window;
+    while !owned && current != 0 {
+      let (mut root, mut parent, mut children, mut count) = (0, 0, std::ptr::null_mut(), 0);
+      if (xlib.XQueryTree)(display, current, &mut root, &mut parent, &mut children, &mut count) == 0 {
+        break;
+      }
+      if !children.is_null() {
+        (xlib.XFree)(children.cast());
+      }
+      owned = parent != 0 && parent != root && parent == focus;
+      current = if parent == root { 0 } else { parent };
+    }
+    if owned && focus != xid as xlib::Window {
+      (xlib.XSetInputFocus)(display, xid as xlib::Window, xlib::RevertToParent, xlib::CurrentTime);
+    }
+  });
+}
+
 impl AppWebview {
   pub(crate) fn native_parent_matches(&self, parent: &AppWindow) -> Option<bool> {
     let xid = self.host.window_handle();
@@ -55,13 +81,7 @@ impl AppWebview {
   }
 
   pub(crate) fn take_keyboard_focus(&self) {
-    let xid = self.host.window_handle();
-    if xid == 0 {
-      return;
-    }
-    with_cef_display((), |xlib, display| unsafe {
-      (xlib.XSetInputFocus)(display, xid as xlib::Window, xlib::RevertToParent, xlib::CurrentTime);
-    });
+    claim_keyboard_focus(self.host.window_handle() as u64, true);
     self.host.set_focus(1);
   }
 

@@ -9,4 +9,5 @@ mod utils;
 mod webview;
 mod window;
 
+pub(crate) use webview::claim_keyboard_focus;
 pub(crate) use window::CefX11Host;

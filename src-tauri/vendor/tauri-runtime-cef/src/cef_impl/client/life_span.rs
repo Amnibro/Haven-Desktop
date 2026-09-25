@@ -95,6 +95,10 @@ wrap_with_args! {
 
   impl LifeSpanHandler {
     fn on_after_created(&self, browser: Option<&mut Browser>) {
+      #[cfg(target_os = "linux")]
+      if let Some(host) = browser.as_deref().and_then(|b| b.host()) {
+        crate::platform::linux::claim_keyboard_focus(host.window_handle() as u64, false);
+      }
       if let (Some(browser), Some(opener)) = (browser.as_deref(), self.opener.as_ref()) {
         if let Some(family) = self.popup_family.upgrade() {
           let _ = self.sender.send(Message::PopupCreated(opener.clone(), browser.identifier(), family.clone()));

@@ -86,3 +86,19 @@ wrap_keyboard_handler! {
     }
   }
 }
+
+wrap_focus_handler! {
+  pub struct TauriCefFocusHandler {}
+
+  impl FocusHandler {
+    fn on_set_focus(&self, browser: Option<&mut Browser>, _source: FocusSource) -> ::std::os::raw::c_int {
+      #[cfg(target_os = "linux")]
+      if let Some(host) = browser.as_deref().and_then(|b| b.host()) {
+        crate::platform::linux::claim_keyboard_focus(host.window_handle() as u64, false);
+      }
+      #[cfg(not(target_os = "linux"))]
+      let _ = browser;
+      0
+    }
+  }
+}

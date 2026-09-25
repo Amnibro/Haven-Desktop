@@ -35,7 +35,7 @@ pub(crate) use drag::{
   DragDropEventTarget, DragDropScriptEvent, DragDropState, WebDragDropResourceRequestHandler,
   WebDragDropResourceRequestHandlerArgs, drag_drop_initialization_script, event_from_script_event,
 };
-use keyboard::TauriCefKeyboardHandler;
+use keyboard::{TauriCefFocusHandler, TauriCefKeyboardHandler};
 use life_span::{TauriCefChildLifeSpanHandler, TauriCefChildLifeSpanHandlerArgs};
 use load::TauriCefLoadHandler;
 pub(crate) use permission::PermissionRequestHandler;
@@ -246,6 +246,10 @@ wrap_with_args! {
 
     fn keyboard_handler(&self) -> Option<KeyboardHandler> {
       Some(TauriCefKeyboardHandler::new(self.devtools_enabled))
+    }
+
+    fn focus_handler(&self) -> Option<FocusHandler> {
+      Some(TauriCefFocusHandler::new())
     }
 
     fn command_handler(&self) -> Option<CommandHandler> {
