@@ -187,21 +187,14 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Persist the main window size so the next launch reopens at it
-            // (the Electron app saved windowBounds; the store key was read but never written).
-            if window.label() == "main" {
-                if let tauri::WindowEvent::Resized(_) = event {
-                    if let (Ok(size), Ok(scale)) = (window.inner_size(), window.scale_factor()) {
-                        let (w, h) = ((size.width as f64 / scale) as u64, (size.height as f64 / scale) as u64);
-                        if w >= 800 && h >= 600 && !window.is_maximized().unwrap_or(false) {
-                            let _ = state::set_value(
-                                window.app_handle(),
-                                "windowBounds",
-                                serde_json::json!({ "width": w, "height": h }),
-                            );
-                        }
-                    }
-                }
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_)) && !window.is_minimized().unwrap_or(false) {
+                let (app, max) = (window.app_handle(), window.is_maximized().unwrap_or(false));
+                let mut prev = state::get_value(app, "windowBounds").unwrap_or_default();
+                let bounds = match (window.inner_size(), window.outer_position(), window.scale_factor()) {
+                    (Ok(s), Ok(p), Ok(k)) if !max && s.width as f64 / k >= 800.0 && s.height as f64 / k >= 600.0 => serde_json::json!({ "x": p.x as f64 / k, "y": p.y as f64 / k, "width": s.width as f64 / k, "height": s.height as f64 / k, "maximized": false }),
+                    _ => { prev["maximized"] = serde_json::json!(max); prev }
+                };
+                let _ = state::set_value(app, "windowBounds", bounds);
             }
             if window.label() == "main" {
                 let main = window.app_handle().get_webview_window("main");

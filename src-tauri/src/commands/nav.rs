@@ -161,8 +161,9 @@ fn show_or_create_server(app: &AppHandle, parsed: Url) -> Result<(), String> {
 
 fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String> {
     let bounds = state::get_value(app, "windowBounds")?;
-    let width = bounds.get("width").and_then(|v| v.as_u64()).unwrap_or(1200) as f64;
-    let height = bounds.get("height").and_then(|v| v.as_u64()).unwrap_or(800) as f64;
+    let num = |k: &str| bounds.get(k).and_then(|v| v.as_f64());
+    let (width, height) = (num("width").unwrap_or(1200.0), num("height").unwrap_or(800.0));
+    let pos = num("x").zip(num("y")).filter(|(x, y)| app.available_monitors().unwrap_or_default().iter().any(|m| { let (p, s, k) = (m.position(), m.size(), m.scale_factor()); let (mx, my) = (p.x as f64 / k, p.y as f64 / k); *x + 40.0 >= mx && *y >= my && *x + 40.0 < mx + s.width as f64 / k && *y + 40.0 < my + s.height as f64 / k }));
     let guard = app.clone();
     let load_guard = app.clone();
     let builder = WebviewWindowBuilder::new(app, "main", initial)
@@ -174,12 +175,18 @@ fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String
         .on_page_load(move |_window, payload| {
             crate::nav_fail::on_page_load(&load_guard, &payload);
         })
+        .on_download(|_, _| true)
+        .disable_drag_drop_handler()
         .theme(Some(tauri::Theme::Dark))
         .background_color(tauri::webview::Color(13, 13, 26, 255))
         .focused(true);
+    let builder = match pos { Some((x, y)) => builder.position(x, y), None => builder.center() };
     #[cfg(windows)]
     let builder = builder.additional_browser_args(BROWSER_ARGS);
     let main = builder.build().map_err(|e| e.to_string())?;
+    if bounds.get("maximized").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let _ = main.maximize();
+    }
     accept_self_signed(&main);
     crate::nav_fail::attach_fail_watch(&main, app.clone());
     let (bg, fg) = crate::theme_icon::stored(app);
