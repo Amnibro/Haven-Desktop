@@ -201,6 +201,7 @@ fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String
             crate::nav_fail::on_page_load(&load_guard, &payload);
         })
         .on_download(|_, _| true)
+        .use_https_scheme(cfg!(target_os = "linux"))
         .on_new_window(move |url, _| if new_window(&popup_guard, &url) { tauri::webview::NewWindowResponse::Allow } else { tauri::webview::NewWindowResponse::Deny })
         .devtools(true)
         .disable_drag_drop_handler()

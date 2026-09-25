@@ -21,6 +21,8 @@ use tauri_plugin_store::StoreExt;
 pub fn run() {
     #[cfg(target_os = "linux")]
     glib::set_prgname(Some("haven-desktop"));
+    #[cfg(target_os = "linux")]
+    let app_id = linux_desktop::launcher_app_id();
     let builder = tauri::Builder::default();
     #[cfg(target_os = "linux")]
     let prefs: serde_json::Value = dirs::data_dir().and_then(|d| std::fs::read(d.join("com.haven.desktop/haven-desktop.json")).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
@@ -36,12 +38,13 @@ pub fn run() {
     let builder = builder.runtime(cef);
     #[cfg(target_os = "linux")]
     let builder = builder.on_permission_request(|_, kind| { use tauri::webview::{PermissionKind as K, PermissionResponse as R}; match kind { K::Microphone | K::Camera | K::DisplayCapture | K::Notifications => R::Allow, _ => R::Default } });
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_notification::init());
     builder
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| tray::show_any(app)))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
@@ -106,10 +109,11 @@ pub fn run() {
             commands::get_inject_script,
             theme_icon::theme_colors,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             #[cfg(target_os = "linux")]
             {
                 let h = app.handle().clone();
+                linux_desktop::claim_scope(app_id.clone());
                 cert_trust::migrate(&h);
                 let r = h.clone();
                 tauri_runtime_cef::set_relaunch_handler(move |_| { let a = r.clone(); let _ = r.run_on_main_thread(move || tray::show_any(&a)); });

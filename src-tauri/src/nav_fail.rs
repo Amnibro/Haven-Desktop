@@ -69,11 +69,14 @@ pub fn haven_nav_action(url: &Url) -> Option<String> {
 }
 
 /// Where the bundled desktop pages are served: http://tauri.localhost on
-/// Windows (WebView2) and Linux (CEF), the tauri:// scheme on macOS.
+/// Windows, https://tauri.localhost on Linux (CEF, so the IPC fetch passes
+/// server CSPs that only allow https:), the tauri:// scheme on macOS.
 fn app_origin() -> &'static str {
     if cfg!(debug_assertions) {
         "http://localhost:14370"
-    } else if cfg!(any(windows, target_os = "linux")) {
+    } else if cfg!(target_os = "linux") {
+        "https://tauri.localhost"
+    } else if cfg!(windows) {
         "http://tauri.localhost"
     } else {
         "tauri://localhost"
