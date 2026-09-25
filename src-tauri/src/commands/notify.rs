@@ -1,7 +1,9 @@
 use crate::state::{self, AppState};
 use serde::Deserialize;
 use serde_json::json;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
+#[cfg(windows)]
+use tauri::Manager;
 #[cfg(not(target_os = "linux"))]
 use tauri_plugin_notification::NotificationExt;
 

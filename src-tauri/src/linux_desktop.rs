@@ -17,9 +17,9 @@ pub fn notify(app: &AppHandle, title: &str, body: &str, silent: bool, channel: O
     if silent {
         n.hint(Hint::SuppressSound(true));
     }
-    let handle = n.show().map_err(|e| e.to_string())?;
     let app = app.clone();
     std::thread::spawn(move || {
+        let Ok(handle) = n.show() else { return };
         handle.wait_for_action(|action| {
             if action == "default" {
                 let a = app.clone();
@@ -36,14 +36,17 @@ pub fn notify(app: &AppHandle, title: &str, body: &str, silent: bool, channel: O
     Ok(())
 }
 pub fn set_unread(app: &AppHandle, count: usize) {
-    if let Some(bus) = BUS.as_ref() {
-        let props: HashMap<&str, zbus::zvariant::Value> = HashMap::from([("count", zbus::zvariant::Value::I64(count as i64)), ("count-visible", zbus::zvariant::Value::Bool(count > 0))]);
-        for id in DESKTOP_IDS {
-            let _ = bus.emit_signal(None::<()>, "/com/haven/desktop", "com.canonical.Unity.LauncherEntry", "Update", &(format!("application://{id}"), &props));
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Some(bus) = BUS.as_ref() {
+            let props: HashMap<&str, zbus::zvariant::Value> = HashMap::from([("count", zbus::zvariant::Value::I64(count as i64)), ("count-visible", zbus::zvariant::Value::Bool(count > 0))]);
+            for id in DESKTOP_IDS {
+                let _ = bus.emit_signal(None::<()>, "/com/haven/desktop", "com.canonical.Unity.LauncherEntry", "Update", &(format!("application://{id}"), &props));
+            }
         }
-    }
-    if let Some(w) = app.get_webview_window("main") {
-        let focused = w.is_focused().unwrap_or(false);
-        let _ = w.request_user_attention(if count > 0 && !focused { Some(UserAttentionType::Informational) } else { None });
-    }
+        if let Some(w) = app.get_webview_window("main") {
+            let focused = w.is_focused().unwrap_or(false);
+            let _ = w.request_user_attention(if count > 0 && !focused { Some(UserAttentionType::Informational) } else { None });
+        }
+    });
 }

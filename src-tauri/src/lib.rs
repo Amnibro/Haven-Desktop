@@ -15,7 +15,7 @@ mod theme_icon;
 mod tray;
 
 use state::AppState;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_store::StoreExt;
 
 pub fn run() {
@@ -119,6 +119,7 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             {
                 let h = app.handle().clone();
+                cert_trust::migrate(&h);
                 tauri_runtime_cef::set_certificate_error_handler(move |e, c| cert_trust::decide(&h, e, c));
             }
             // Ensure store file exists with defaults
