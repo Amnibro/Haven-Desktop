@@ -128,23 +128,28 @@
     supportedLocales: [],
   };
 
-  function t(key) {
-    return key;
+  function t(key, values) {
+    const msg = (i18nState.messages && i18nState.messages[key]) || key;
+    return Object.entries(values || {}).reduce((m, [k, v]) => m.split(`{${k}}`).join(String(v)), msg);
   }
-
-  function setI18nText(el, key, _values, prefix = '', suffix = '') {
+  function setI18nText(el, key, values, prefix = '', suffix = '') {
     if (!el) return;
-    el.textContent = `${prefix}${t(key)}${suffix}`;
+    Object.assign(el.dataset, { havenI18n: key, havenI18nValues: JSON.stringify(values || {}), havenI18nPrefix: prefix, havenI18nSuffix: suffix });
+    el.textContent = `${prefix}${t(key, values)}${suffix}`;
   }
-
-  invoke('i18n_get_state').then((s) => {
-    if (s) i18nState = s;
-  }).catch(() => {});
-
-  listen('i18n:changed', (state) => {
+  function setI18nTitle(el, key, values) {
+    if (!el) return;
+    Object.assign(el.dataset, { havenI18nTitle: key, havenI18nTitleValues: JSON.stringify(values || {}) });
+    el.title = t(key, values);
+    el.setAttribute('aria-label', el.title);
+  }
+  function applyI18n(state) {
     if (state) i18nState = state;
-  });
-
+    document.querySelectorAll('[data-haven-i18n]').forEach((el) => setI18nText(el, el.dataset.havenI18n, JSON.parse(el.dataset.havenI18nValues || '{}'), el.dataset.havenI18nPrefix, el.dataset.havenI18nSuffix));
+    document.querySelectorAll('[data-haven-i18n-title]').forEach((el) => setI18nTitle(el, el.dataset.havenI18nTitle, JSON.parse(el.dataset.havenI18nTitleValues || '{}')));
+  }
+  invoke('i18n_get_state').then(applyI18n).catch(() => {});
+  listen('i18n:changed', applyI18n);
   // ── Audio pipeline state ─────────────────────────────────
   let _audioWorkletNode = null;
   let _audioCtx = null;
@@ -365,8 +370,8 @@
     backToWelcome: () => invoke('nav_back_to_welcome'),
 
     update: {
-      download: async () => ({ errorKey: 'update.unavailable' }),
-      install: () => {},
+      download: () => invoke('update_download'),
+      install: () => invoke('update_install'),
     },
 
     audio: {
@@ -593,6 +598,56 @@
   listen('voice:ptt-toggle', () => clickVoice('voice-mute-btn'));
   listen('voice:ptt-down', () => pttSetTalking(true));
   listen('voice:ptt-up', () => pttSetTalking(false));
+
+  // ── Auto-update banner ───────────────────────────────────
+  (function setupAutoUpdateBanner() {
+    let bannerEl = null;
+    const removeBanner = () => { bannerEl?.remove(); bannerEl = null; };
+    function createBanner(messageKey, values, buttonKey, buttonAction) {
+      removeBanner();
+      bannerEl = document.createElement('div');
+      bannerEl.id = 'haven-update-banner';
+      bannerEl.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999998;background:linear-gradient(135deg,#6b4fdb,#8b6ce7);color:#fff;display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.3);';
+      const msg = document.createElement('span');
+      msg.id = 'haven-update-msg';
+      setI18nText(msg, messageKey, values);
+      bannerEl.appendChild(msg);
+      if (buttonKey) {
+        const btn = document.createElement('button');
+        btn.id = 'haven-update-btn';
+        setI18nText(btn, buttonKey);
+        btn.style.cssText = 'background:#fff;color:#6b4fdb;border:none;border-radius:4px;padding:4px 14px;font-weight:600;cursor:pointer;font-size:12px;';
+        btn.onclick = buttonAction;
+        bannerEl.appendChild(btn);
+      }
+      const close = document.createElement('button');
+      close.textContent = '✕';
+      setI18nTitle(close, 'update.close');
+      close.style.cssText = 'background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:16px;padding:0 4px;margin-left:4px;';
+      close.onclick = removeBanner;
+      bannerEl.appendChild(close);
+      const mount = () => document.body.prepend(bannerEl);
+      document.body ? mount() : window.addEventListener('DOMContentLoaded', mount, { once: true });
+    }
+    listen('update:available', ({ version } = {}) => createBanner('update.available', { version }, 'update.now', async () => {
+      const btn = document.getElementById('haven-update-btn');
+      const msg = document.getElementById('haven-update-msg');
+      if (btn) btn.disabled = true;
+      setI18nText(msg, 'update.downloading');
+      const res = await invoke('update_download').catch((e) => ({ error: String(e) }));
+      if (res?.errorKey) setI18nText(msg, res.errorKey);
+      else if (res?.error) setI18nText(msg, 'update.failed', { error: res.error });
+    }));
+    listen('update:download-progress', ({ percent } = {}) => {
+      const msg = document.getElementById('haven-update-msg');
+      if (msg) setI18nText(msg, 'update.downloadingProgress', { percent });
+    });
+    listen('update:downloaded', () => createBanner('update.downloaded', null, 'update.restartNow', () => invoke('update_install')));
+    listen('update:error', ({ message } = {}) => {
+      const msg = document.getElementById('haven-update-msg');
+      if (msg) setI18nText(msg, 'update.error', { error: message });
+    });
+  })();
 
   // ── getDisplayMedia override ─────────────────────────────
   function installGetDisplayMediaOverride() {

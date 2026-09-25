@@ -18,6 +18,7 @@ pub struct I18nState {
     pub is_preference_stored: bool,
     pub direction: String,
     pub supported_locales: Vec<LocaleInfo>,
+    pub messages: HashMap<String, String>,
 }
 
 const EN: &[(&str, &str)] = &[
@@ -120,6 +121,11 @@ fn lookup(locale: &str, key: &str) -> Option<&'static str> {
 static UPSTREAM_EN: once_cell::sync::Lazy<std::collections::HashMap<String, String>> = once_cell::sync::Lazy::new(|| serde_json::from_str(include_str!("../locales/electron-en.json")).unwrap_or_default());
 static UPSTREAM_PT_BR: once_cell::sync::Lazy<std::collections::HashMap<String, String>> = once_cell::sync::Lazy::new(|| serde_json::from_str(include_str!("../locales/electron-pt-BR.json")).unwrap_or_default());
 
+fn catalog(locale: &str) -> HashMap<String, String> {
+    let pt = locale.eq_ignore_ascii_case("pt-BR") || locale.eq_ignore_ascii_case("pt");
+    let own = |t: &[(&str, &str)]| t.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>();
+    UPSTREAM_EN.clone().into_iter().chain(own(EN)).chain(if pt { UPSTREAM_PT_BR.clone().into_iter().chain(own(PT_BR)).collect() } else { vec![] }).collect()
+}
 pub fn supported_locales() -> Vec<LocaleInfo> {
     vec![
         LocaleInfo {
@@ -207,5 +213,6 @@ pub fn build_state(
         is_preference_stored,
         direction,
         supported_locales: supported_locales(),
+        messages: catalog(locale),
     }
 }

@@ -9,6 +9,7 @@ mod server;
 mod settings;
 mod share;
 mod shortcuts;
+mod update;
 mod window_cmds;
 
 pub use audio_cmds::*;
@@ -22,4 +23,5 @@ pub use server::*;
 pub use settings::*;
 pub use share::*;
 pub use shortcuts::*;
+pub use update::*;
 pub use window_cmds::*;

@@ -53,7 +53,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             let id = event.id.as_ref();
             match id {
                 "show" => show_any(app),
-                "updates" => crate::check_for_update(app.clone(), true),
+                "updates" => crate::commands::check_for_update(app.clone(), true),
                 "change" => { let _ = crate::commands::go_back_to_welcome(app); }
                 "back" => { if let Some(p) = app.state::<AppState>().primary_server_url.lock().clone() { let _ = crate::commands::switch_server(app, &p); } }
                 "quit" => quit_app(app),
