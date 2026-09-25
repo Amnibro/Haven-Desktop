@@ -43,7 +43,9 @@ fn check_for_update(app: tauri::AppHandle) {
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "linux")]
-    let cef = tauri_runtime_cef::Cef::default().command_line_arg("ignore-certificate-errors", None::<String>).command_line_arg("password-store", Some("basic")).disable_features(["LocalNetworkAccessChecks"]);
+    let cef = tauri_runtime_cef::Cef::default().command_line_arg("ignore-certificate-errors", None::<String>).command_line_arg("password-store", Some("basic")).disable_features(["LocalNetworkAccessChecks"]).enable_features(["WebRTCPipeWireCapturer"]);
+    #[cfg(target_os = "linux")]
+    tauri_runtime_cef::grant_display_capture(true);
     #[cfg(all(target_os = "linux", debug_assertions))]
     let cef = match std::env::var("HAVEN_CEF_DEBUG_PORT").ok().and_then(|p| p.parse::<u16>().ok()) { Some(port) => cef.remote_debugging(tauri_runtime_cef::RemoteDebugging::Port { port, allowed_origins: vec![] }).command_line_arg("use-fake-device-for-media-stream", None::<String>).command_line_arg("use-fake-ui-for-media-stream", None::<String>), None => cef };
     #[cfg(target_os = "linux")]
