@@ -35,7 +35,14 @@ fn same_origin(url: &Url, server: &str) -> bool {
 
 /// Keep the main webview on the active Haven server (or a known embed);
 /// anything else opens in the system browser, like the Electron `will-navigate`.
+fn is_sso_consent(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https") && url.path().trim_end_matches('/') == "/api/auth/SSO"
+}
+
 fn new_window(app: &AppHandle, url: &Url) -> bool {
+    if is_sso_consent(url) {
+        return true;
+    }
     let active = app.state::<AppState>().active_server_url.lock().clone();
     let q = |k: &str| url.query_pairs().find(|(n, _)| n == k).map(|(_, v)| v.to_string()).unwrap_or_default();
     let (code, message) = (q("channel"), q("message"));
@@ -65,6 +72,7 @@ pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
         return false;
     }
     if url.scheme() == "tauri"
+        || is_sso_consent(url)
         || url.host_str() == Some("tauri.localhost")
         || crate::nav_fail::is_desktop_asset_url(url)
     {
