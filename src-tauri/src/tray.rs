@@ -9,7 +9,7 @@ use tauri::{
 static TRAY_UP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub fn mark_up() { TRAY_UP.store(true, std::sync::atomic::Ordering::Relaxed) }
 pub fn available() -> bool { TRAY_UP.load(std::sync::atomic::Ordering::Relaxed) }
-fn show_any(app: &AppHandle) {
+pub(crate) fn show_any(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("main").or_else(|| app.get_webview_window("welcome")) {
         let _ = win.unminimize();
         let _ = win.show();

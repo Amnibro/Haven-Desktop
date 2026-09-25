@@ -45,6 +45,7 @@ pub use cef::sys::CEF_API_VERSION_LAST;
 pub use platform::macos::setup_application as prepare_macos_application;
 pub use runtime::*;
 pub use cef_impl::client::grant_display_capture;
+pub use cef_impl::client::set_relaunch_handler;
 pub use cef_impl::request_handler::{set_certificate_error_handler, CertificateError};
 pub use tauri_ext::*;
 /// Marks the application entry point so non-browser CEF processes (renderer, GPU, ...) are handled.

@@ -24,6 +24,7 @@ mod life_span;
 mod load;
 mod permission;
 pub use permission::grant_display_capture;
+pub use process::set_relaunch_handler;
 mod process;
 
 use command::{TauriCefCommandHandler, TauriCefCommandHandlerArgs};

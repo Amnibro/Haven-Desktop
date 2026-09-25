@@ -12,6 +12,7 @@ use tauri_runtime::ProgressBarState;
 use tauri_runtime::dpi::PhysicalSize;
 use tauri_utils::config::Color;
 use winit::platform::gtk4::WindowExtGtk4;
+use x11_dl::xlib;
 
 use crate::window::AppWindow;
 
@@ -69,6 +70,12 @@ impl CefX11Host {
     gtk_window.set_child(Some(&default_vbox));
 
     let parent_xid = window_xid(window);
+    if let Some(name) = gtk::glib::prgname().and_then(|n| std::ffi::CString::new(n.as_str()).ok()) {
+      super::utils::with_x11((), |xlib, display| unsafe {
+        let mut hint = xlib::XClassHint { res_name: name.as_ptr() as *mut _, res_class: name.as_ptr() as *mut _ };
+        (xlib.XSetClassHint)(display, parent_xid as xlib::Window, &mut hint);
+      });
+    }
     let initial_size = window.surface_size();
     let (xid, colormap) = create_cef_container(parent_xid, initial_size)?;
 

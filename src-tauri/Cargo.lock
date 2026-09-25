@@ -2046,6 +2046,7 @@ dependencies = [
  "base64 0.22.1",
  "cc",
  "dirs 6.0.0",
+ "glib",
  "notify-rust",
  "once_cell",
  "parking_lot",

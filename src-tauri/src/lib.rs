@@ -19,6 +19,8 @@ use tauri::Manager;
 use tauri_plugin_store::StoreExt;
 
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    glib::set_prgname(Some("haven-desktop"));
     let builder = tauri::Builder::default();
     #[cfg(target_os = "linux")]
     let prefs: serde_json::Value = dirs::data_dir().and_then(|d| std::fs::read(d.join("com.haven.desktop/haven-desktop.json")).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
@@ -35,18 +37,7 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     let builder = builder.on_permission_request(|_, kind| { use tauri::webview::{PermissionKind as K, PermissionResponse as R}; match kind { K::Microphone | K::Camera | K::DisplayCapture | K::Notifications => R::Allow, _ => R::Default } });
     builder
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            // A second launch (taskbar pin, Start menu) focuses the running app
-            // instead of booting a second copy, like Electron's requestSingleInstanceLock.
-            for label in ["main", "welcome"] {
-                if let Some(win) = app.get_webview_window(label) {
-                    let _ = win.show();
-                    let _ = win.unminimize();
-                    let _ = win.set_focus();
-                    break;
-                }
-            }
-        }))
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| tray::show_any(app)))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -120,6 +111,8 @@ pub fn run() {
             {
                 let h = app.handle().clone();
                 cert_trust::migrate(&h);
+                let r = h.clone();
+                tauri_runtime_cef::set_relaunch_handler(move |_| { let a = r.clone(); let _ = r.run_on_main_thread(move || tray::show_any(&a)); });
                 tauri_runtime_cef::set_certificate_error_handler(move |e, c| cert_trust::decide(&h, e, c));
             }
             // Ensure store file exists with defaults
@@ -248,5 +241,11 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running Haven Desktop");
+        .unwrap_or_else(|e| {
+            #[cfg(target_os = "linux")]
+            if format!("{e:?}").contains("WebviewRuntimeNotInstalled") {
+                std::process::exit(0);
+            }
+            panic!("error while running Haven Desktop: {e}");
+        });
 }

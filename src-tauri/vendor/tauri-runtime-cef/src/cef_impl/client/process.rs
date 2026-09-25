@@ -50,8 +50,16 @@ wrap_browser_process_handler! {
           return 1;
         }
       }
-      // TODO: add event
+      if let Some(handler) = RELAUNCH_HANDLER.get() {
+        handler(args);
+      }
       1
     }
   }
+}
+
+static RELAUNCH_HANDLER: std::sync::OnceLock<Box<dyn Fn(Vec<String>) + Send + Sync>> = std::sync::OnceLock::new();
+
+pub fn set_relaunch_handler(handler: impl Fn(Vec<String>) + Send + Sync + 'static) {
+  let _ = RELAUNCH_HANDLER.set(Box::new(handler));
 }
