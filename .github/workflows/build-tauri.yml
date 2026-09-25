@@ -18,6 +18,9 @@ env:
 
 jobs:
   build-windows:
+    # The cef-runtime branch is Linux only: Tauri 3 has no Windows runtime yet,
+    # so Windows keeps shipping from the Tauri 2 branch.
+    if: github.ref_name != 'cef-runtime'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +84,7 @@ jobs:
 
   publish:
     needs: [build-windows, build-linux]
+    if: always() && needs.build-linux.result == 'success' && needs.build-windows.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,16 +106,17 @@ jobs:
           EXE_PATH=$(find dist -name '*-setup.exe' | head -1)
           APPIMAGE_PATH=$(find dist -name '*.AppImage' | head -1)
           BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/latest.json" -o prev-latest.json || echo '{}' > prev-latest.json
           EXE_PATH="$EXE_PATH" APPIMAGE_PATH="$APPIMAGE_PATH" BASE="$BASE" VERSION="$VERSION" node -e "
             const fs=require('fs'), path=require('path'); const enc=encodeURIComponent; const e=process.env;
             const plat=(p)=>({ signature: fs.readFileSync(p+'.sig','utf8').trim(), url: e.BASE+'/'+enc(path.basename(p)) });
             fs.writeFileSync('dist/latest.json', JSON.stringify({
               version: e.VERSION, notes: 'Haven Desktop (Tauri) '+e.VERSION, pub_date: new Date().toISOString(),
-              platforms: { 'windows-x86_64': plat(e.EXE_PATH), 'linux-x86_64': plat(e.APPIMAGE_PATH) }
+              platforms: Object.assign({}, e.EXE_PATH ? { 'windows-x86_64': plat(e.EXE_PATH) } : ((JSON.parse(fs.readFileSync('prev-latest.json','utf8')).platforms || {})['windows-x86_64'] ? { 'windows-x86_64': JSON.parse(fs.readFileSync('prev-latest.json','utf8')).platforms['windows-x86_64'] } : {}), { 'linux-x86_64': plat(e.APPIMAGE_PATH) })
             }, null, 2));"
           cat dist/latest.json
           TITLE="${TAG#v}"
-          NOTES="Haven Desktop Tauri build (${TITLE}). Windows NSIS installer, Linux AppImage and deb. Requires a Haven server. On Linux the app runs on Chromium (CEF): voice, screen share with app audio and a certificate prompt for self-signed servers."
+          NOTES="Haven Desktop Tauri build (${TITLE}). $([ -n "$EXE_PATH" ] && echo 'Windows NSIS installer, ')Linux AppImage and deb. Requires a Haven server. On Linux the app runs on Chromium (CEF): voice, screen share with app audio and a certificate prompt for self-signed servers."
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Haven ${TITLE}" --notes "$NOTES" --latest
           fi
