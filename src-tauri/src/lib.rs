@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+mod cert_trust;
 mod audio;
 mod commands;
 mod i18n;
@@ -43,7 +45,7 @@ fn check_for_update(app: tauri::AppHandle) {
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "linux")]
-    let cef = tauri_runtime_cef::Cef::default().command_line_arg("ignore-certificate-errors", None::<String>).command_line_arg("password-store", Some("basic")).disable_features(["LocalNetworkAccessChecks"]).enable_features(["WebRTCPipeWireCapturer"]);
+    let cef = tauri_runtime_cef::Cef::default().command_line_arg("password-store", Some("basic")).command_line_arg("disable-background-timer-throttling", None::<String>).command_line_arg("disable-renderer-backgrounding", None::<String>).command_line_arg("disable-backgrounding-occluded-windows", None::<String>).disable_features(["LocalNetworkAccessChecks", "IntensiveWakeUpThrottling", "CalculateNativeWinOcclusion"]).enable_features(["WebRTCPipeWireCapturer"]);
     #[cfg(target_os = "linux")]
     tauri_runtime_cef::grant_display_capture(true);
     #[cfg(all(target_os = "linux", debug_assertions))]
@@ -51,7 +53,7 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     let builder = builder.runtime(cef);
     #[cfg(target_os = "linux")]
-    let builder = builder.on_permission_request(|_, kind| { use tauri::webview::{PermissionKind as K, PermissionResponse as R}; match kind { K::Microphone | K::Camera | K::DisplayCapture | K::Notifications | K::ClipboardRead => R::Allow, _ => R::Default } });
+    let builder = builder.on_permission_request(|_, kind| { use tauri::webview::{PermissionKind as K, PermissionResponse as R}; match kind { K::Microphone | K::Camera | K::DisplayCapture | K::Notifications => R::Allow, _ => R::Default } });
     builder
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // A second launch (taskbar pin, Start menu) focuses the running app
@@ -132,6 +134,11 @@ pub fn run() {
             theme_icon::theme_colors,
         ])
         .setup(|app| {
+            #[cfg(target_os = "linux")]
+            {
+                let h = app.handle().clone();
+                tauri_runtime_cef::set_certificate_error_handler(move |e, c| cert_trust::decide(&h, e, c));
+            }
             // Ensure store file exists with defaults
             let _ = app.store("haven-desktop.json")?;
             state::ensure_defaults(app.handle())?;

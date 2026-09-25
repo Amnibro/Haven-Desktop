@@ -191,9 +191,35 @@ wrap_with_args! {
       _browser: Option<&mut Browser>,
       cert_error: Errorcode,
       request_url: Option<&CefString>,
-      _ssl_info: Option<&mut Sslinfo>,
-      _callback: Option<&mut Callback>,
+      ssl_info: Option<&mut Sslinfo>,
+      callback: Option<&mut Callback>,
     ) -> ::std::os::raw::c_int {
+      if let (Some(handler), Some(callback)) = (CERTIFICATE_ERROR_HANDLER.get(), callback) {
+        let host = request_url
+          .map(ToString::to_string)
+          .and_then(|url| url::Url::parse(&url).ok())
+          .map(|url| format!("{}:{}", url.host_str().unwrap_or_default(), url.port_or_known_default().unwrap_or(443)))
+          .unwrap_or_default();
+        let der = ssl_info
+          .and_then(|info| info.x509_certificate())
+          .and_then(|cert| cert.derencoded())
+          .map(|bin| {
+            let mut buf = vec![0u8; bin.size()];
+            bin.data(Some(&mut buf), 0);
+            buf
+          })
+          .unwrap_or_default();
+        let callback = callback.clone();
+        handler(
+          CertificateError { host, error: format!("{cert_error:?}"), der },
+          Box::new(move |proceed| {
+            if proceed {
+              callback.cont();
+            }
+          }),
+        );
+        return 1;
+      }
       match self.certificate_errors {
         crate::CertificateErrorPolicy::ChromeInterstitial => 0,
         crate::CertificateErrorPolicy::Cancel => {
@@ -688,4 +714,28 @@ mod termination_tests {
       assert_eq!(termination_reason(status), expected);
     }
   }
+}
+
+/// Amni patch: a TLS certificate that did not validate, handed to the application.
+pub struct CertificateError {
+  /// `host:port` the request was for.
+  pub host: String,
+  /// Chromium's error code, as its debug name.
+  pub error: String,
+  /// The server certificate, DER encoded (empty if CEF gave none).
+  pub der: Vec<u8>,
+}
+
+type CertificateErrorHandler = Box<dyn Fn(CertificateError, Box<dyn FnOnce(bool) + Send>) + Send + Sync>;
+static CERTIFICATE_ERROR_HANDLER: std::sync::OnceLock<CertificateErrorHandler> = std::sync::OnceLock::new();
+
+/// Amni patch: decide certificate errors in the application instead of the policy.
+///
+/// The handler gets the error and a continuation. `true` loads the page anyway,
+/// `false` (or dropping it) cancels the request. It may be called later, from any
+/// thread. Only the first handler set is used.
+pub fn set_certificate_error_handler(
+  handler: impl Fn(CertificateError, Box<dyn FnOnce(bool) + Send>) + Send + Sync + 'static,
+) {
+  let _ = CERTIFICATE_ERROR_HANDLER.set(Box::new(handler));
 }
