@@ -32,9 +32,13 @@ interface HavenApi {
   nav: {
     openApp: (serverUrl: string) => void | Promise<void>;
   };
+  servers: {
+    history: () => Promise<unknown>;
+    remove: (url: string) => Promise<unknown>;
+  };
   update: {
     download: () => Promise<{ errorKey?: string; error?: string }>;
-    install: () => void;
+    install: () => Promise<unknown>;
   };
   i18n: HavenI18nApi;
   openExternal: (url: string) => void | Promise<void>;

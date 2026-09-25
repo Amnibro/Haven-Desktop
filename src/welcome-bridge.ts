@@ -62,9 +62,13 @@ export async function installWelcomeBridge(): Promise<void> {
         invoke("nav_open_app", { serverUrl }).then(() => undefined),
     },
 
+    servers: {
+      history: () => invoke("server_history_get"),
+      remove: (url: string) => invoke("server_history_remove", { url }),
+    },
     update: {
-      download: async () => ({ errorKey: "update.unavailable" }),
-      install: () => {},
+      download: () => invoke("update_download"),
+      install: () => invoke("update_install"),
     },
 
     i18n: {
