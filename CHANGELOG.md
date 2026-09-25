@@ -2,6 +2,11 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.5.3-tauri (2026-09-24)
+
+- **Pictures copied from a browser paste on Linux.** A picture copied from Chrome, Amni Browse or a web page ("Copy image") puts an HTML `<img>` next to the image. WebKitGTK exposes only the HTML, and the paste rescue stood down whenever any text type was present, so nothing pasted. It now stands down only for real plain text, stops the stray HTML paste, and reads the picture instead.
+- A failed rescue shows an error toast instead of failing silently, and a rescue that never answers releases after 10 s so later pastes still work.
+
 ## v2.5.2-tauri (2026-09-24)
 
 - **Pasting a picture works on Linux again.** The WebKitGTK paste rescue read the clipboard image fine, then turned the PNG data URL into a blob with `fetch()`. Haven's CSP (`connect-src 'self' ws: wss: https:`) has no `data:`, so the fetch was blocked and the empty `.catch()` hid it: Ctrl+V and right-click → Paste did nothing. The bridge now decodes the base64 directly, and logs rescue failures to the console instead of swallowing them.

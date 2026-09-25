@@ -602,12 +602,16 @@
       if (e.__havenReplay || busy) return;
       const dt = e.clipboardData;
       const hasFile = !!dt && Array.from(dt.items || []).some((i) => i.kind === 'file');
-      const hasText = !!dt && (dt.types || []).some((t) => /^text\//.test(t));
-      if (hasFile || hasText) return;
+      const plain = dt ? (dt.getData('text/plain') || '') : '';
+      if (hasFile || plain.trim()) return;
+      const markupOnly = !!dt && (dt.types || []).length > 0;
+      if (markupOnly) e.preventDefault();
+      const warn = (m) => { try { window.app && window.app._showToast && window.app._showToast(m, 'error'); } catch (x) {} };
       const target = e.target;
       busy = true;
+      const guard = setTimeout(() => { busy = false; }, 10000);
       invoke('clipboard_read_image').then(async (res) => {
-        if (!res || !res.ok || !res.dataUrl) return console.warn('[haven] clipboard image unavailable:', res && res.reason);
+        if (!res || !res.ok || !res.dataUrl) { markupOnly && warn("Couldn't paste the picture: " + ((res && res.reason) || 'no picture on the clipboard')); return console.warn('[haven] clipboard image unavailable:', res && res.reason); }
         const bin = atob(res.dataUrl.slice(res.dataUrl.indexOf(',') + 1));
         const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
         const file = new File([bytes], 'pasted-image.png', { type: 'image/png' });
@@ -616,7 +620,7 @@
         const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: replay });
         ev.__havenReplay = true;
         (target || document.activeElement || document.body).dispatchEvent(ev);
-      }).catch((err) => console.warn('[haven] paste rescue failed:', err)).finally(() => { busy = false; });
+      }).catch((err) => { warn("Couldn't paste the picture: " + err); console.warn('[haven] paste rescue failed:', err); }).finally(() => { clearTimeout(guard); busy = false; });
     }, true);
   })();
 
