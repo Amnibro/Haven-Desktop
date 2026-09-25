@@ -68,14 +68,12 @@ pub fn haven_nav_action(url: &Url) -> Option<String> {
         .map(|action| action.to_string())
 }
 
-/// Where the bundled desktop pages are served. Tauri uses
-/// http://tauri.localhost on Windows but the tauri:// scheme on Linux and
-/// macOS; hard-coding the Windows origin left Linux release builds on
-/// "Could not connect to tauri.localhost" with no Retry or Home buttons.
+/// Where the bundled desktop pages are served: http://tauri.localhost on
+/// Windows (WebView2) and Linux (CEF), the tauri:// scheme on macOS.
 fn app_origin() -> &'static str {
     if cfg!(debug_assertions) {
         "http://localhost:14370"
-    } else if cfg!(windows) {
+    } else if cfg!(any(windows, target_os = "linux")) {
         "http://tauri.localhost"
     } else {
         "tauri://localhost"
@@ -234,6 +232,11 @@ pub fn on_page_load(app: &AppHandle, payload: &PageLoadPayload<'_>) {
         clear_pending(app);
         return;
     }
+    let active = app.state::<AppState>().active_server_url.lock().clone();
+    let ours = matches!(url.scheme(), "http" | "https") && active.as_deref().and_then(|a| Url::parse(a).ok()).is_none_or(|a| a.origin() == url.origin());
+    if !ours && !looks_like_browser_error(url) {
+        return;
+    }
     match payload.event() {
         PageLoadEvent::Started => {
             if looks_like_browser_error(url) {
@@ -247,16 +250,10 @@ pub fn on_page_load(app: &AppHandle, payload: &PageLoadPayload<'_>) {
                 maybe_timeout(&app, &watched);
             });
         }
+        PageLoadEvent::Finished if !looks_like_browser_error(url) => clear_pending(app),
         PageLoadEvent::Finished => {
-            if looks_like_browser_error(url) {
-                let failed = app
-                    .state::<AppState>()
-                    .active_server_url
-                    .lock()
-                    .clone()
-                    .unwrap_or_else(|| url.to_string());
-                show_connection_error(app, &failed);
-            }
+            let failed = app.state::<AppState>().active_server_url.lock().clone().unwrap_or_else(|| url.to_string());
+            show_connection_error(app, &failed);
         }
     }
 }
