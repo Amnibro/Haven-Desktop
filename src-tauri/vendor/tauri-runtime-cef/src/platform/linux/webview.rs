@@ -54,6 +54,17 @@ impl AppWebview {
     })
   }
 
+  pub(crate) fn take_keyboard_focus(&self) {
+    let xid = self.host.window_handle();
+    if xid == 0 {
+      return;
+    }
+    with_cef_display((), |xlib, display| unsafe {
+      (xlib.XSetInputFocus)(display, xid as xlib::Window, xlib::RevertToParent, xlib::CurrentTime);
+    });
+    self.host.set_focus(1);
+  }
+
   fn xid(&self) -> xlib::Window {
     let xid = self.host.window_handle();
     assert_ne!(xid, 0, "failed to get XID");

@@ -2314,6 +2314,10 @@ impl<T: UserEvent> ApplicationHandler for WinitCefApp<T> {
         );
       }
       WinitWindowEvent::Focused(focused) => {
+        #[cfg(target_os = "linux")]
+        if focused && let Some(child) = appwindow.children.iter().rev().find(|c| c.native_visible() == Some(true)) {
+          child.take_keyboard_focus();
+        }
         self.emit_window_event(window_id, WindowEvent::Focused(focused));
       }
       WinitWindowEvent::ThemeChanged(theme) => {
