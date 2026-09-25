@@ -34,6 +34,13 @@ pub fn notify(app: AppHandle, opts: NotifyOpts) -> Result<bool, String> {
     }
 }
 
+fn server_names(app: &AppHandle) -> serde_json::Map<String, serde_json::Value> {
+    state::get_value(app, "serverHistory").ok().and_then(|v| v.as_array().cloned()).unwrap_or_default().iter().filter_map(|e| {
+        let url = state::normalize_server_url(e.get("url")?.as_str()?)?;
+        let name = e.get("name").and_then(|n| n.as_str()).filter(|n| !n.is_empty() && *n != e.get("url").and_then(|u| u.as_str()).unwrap_or_default()).map(String::from).or_else(|| url::Url::parse(&url).ok().and_then(|u| u.host_str().map(String::from))).unwrap_or_else(|| url.clone());
+        Some((url, json!(name)))
+    }).collect()
+}
 #[tauri::command]
 pub fn notification_badge(
     app: AppHandle,
@@ -44,7 +51,7 @@ pub fn notification_badge(
         state.server_badges.lock().insert(url, has_unread);
     }
     let badges = state.server_badges.lock().clone();
-    let payload = json!({ "badges": badges, "names": {} });
+    let payload = json!({ "badges": badges, "names": server_names(&app) });
     let _ = app.emit("server-badge-update", payload);
     // Red dot on the taskbar icon while anything is unread (Electron's overlay
     // icon). Tauri only implements set_overlay_icon on Windows.
@@ -60,9 +67,9 @@ pub fn notification_badge(
 }
 
 #[tauri::command]
-pub fn get_server_badges(state: State<AppState>) -> Result<serde_json::Value, String> {
+pub fn get_server_badges(app: AppHandle, state: State<AppState>) -> Result<serde_json::Value, String> {
     let badges = state.server_badges.lock().clone();
-    Ok(json!({ "badges": badges, "names": {} }))
+    Ok(json!({ "badges": badges, "names": server_names(&app) }))
 }
 
 #[tauri::command]
