@@ -21,7 +21,11 @@ use tauri_plugin_store::StoreExt;
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "linux")]
-    let cef = tauri_runtime_cef::Cef::default().command_line_arg("password-store", Some("basic")).command_line_arg("disable-background-timer-throttling", None::<String>).command_line_arg("disable-renderer-backgrounding", None::<String>).command_line_arg("disable-backgrounding-occluded-windows", None::<String>).disable_features(["LocalNetworkAccessChecks", "IntensiveWakeUpThrottling", "CalculateNativeWinOcclusion"]).enable_features(["WebRTCPipeWireCapturer"]);
+    let prefs: serde_json::Value = dirs::data_dir().and_then(|d| std::fs::read(d.join("com.haven.desktop/haven-desktop.json")).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    #[cfg(target_os = "linux")]
+    let lang = i18n::resolve_locale(prefs.get("language").and_then(|v| v.as_str()).unwrap_or("auto"), &i18n::system_languages());
+    #[cfg(target_os = "linux")]
+    let cef = [("forceSDR", "force-color-profile", Some("srgb")), ("disableGpuVsync", "disable-gpu-vsync", None), ("unlimitFrameRate", "disable-frame-rate-limit", None)].into_iter().filter(|(k, ..)| prefs.get(*k).and_then(|v| v.as_bool()).unwrap_or(false)).fold(tauri_runtime_cef::Cef::default(), |c, (_, s, v)| c.command_line_arg(s, v.map(String::from))).accept_language_list(if lang == "en" { "en-US,en".to_string() } else { format!("{lang},{},en-US,en", lang.split('-').next().unwrap_or("en")) }).command_line_arg("js-flags", Some("--max-old-space-size=512")).command_line_arg("disable-gpu-memory-buffer-video-frames", None::<String>).command_line_arg("image-decode-ct", Some("3")).command_line_arg("force-gpu-mem-available-mb", Some("256")).command_line_arg("password-store", Some("basic")).command_line_arg("disable-background-timer-throttling", None::<String>).command_line_arg("disable-renderer-backgrounding", None::<String>).command_line_arg("disable-backgrounding-occluded-windows", None::<String>).disable_features(["LocalNetworkAccessChecks", "IntensiveWakeUpThrottling", "CalculateNativeWinOcclusion", "AutofillServerCommunication"]).enable_features(["WebRTCPipeWireCapturer"]);
     #[cfg(target_os = "linux")]
     tauri_runtime_cef::grant_display_capture(true);
     #[cfg(all(target_os = "linux", debug_assertions))]
