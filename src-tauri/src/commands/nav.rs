@@ -35,6 +35,30 @@ fn same_origin(url: &Url, server: &str) -> bool {
 
 /// Keep the main webview on the active Haven server (or a known embed);
 /// anything else opens in the system browser, like the Electron `will-navigate`.
+fn new_window(app: &AppHandle, url: &Url) -> bool {
+    let active = app.state::<AppState>().active_server_url.lock().clone();
+    let q = |k: &str| url.query_pairs().find(|(n, _)| n == k).map(|(_, v)| v.to_string()).unwrap_or_default();
+    let (code, message) = (q("channel"), q("message"));
+    let path = url.path();
+    let app_link = path == "/app" || path == "/app.html" || path.starts_with("/app/") || path.starts_with("/c/") || !code.is_empty() || !message.is_empty();
+    match (active.as_deref().is_some_and(|a| same_origin(url, a)), app_link) {
+        (true, true) => {
+            if code.is_empty() {
+                let _ = app.get_webview_window("main").map(|w| w.navigate(url.clone()));
+            } else {
+                let _ = app.emit_to("main", "app:navigate-deep-link", json!({ "code": code, "messageId": message, "url": url.as_str() }));
+            }
+            false
+        }
+        (true, false) => true,
+        _ => {
+            if url.scheme() == "http" || url.scheme() == "https" {
+                let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+            }
+            false
+        }
+    }
+}
 pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
     if let Some(action) = crate::nav_fail::haven_nav_action(url) {
         handle_error_nav(app, &action);
@@ -166,6 +190,7 @@ fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String
     let pos = num("x").zip(num("y")).filter(|(x, y)| app.available_monitors().unwrap_or_default().iter().any(|m| { let (p, s, k) = (m.position(), m.size(), m.scale_factor()); let (mx, my) = (p.x as f64 / k, p.y as f64 / k); *x + 40.0 >= mx && *y >= my && *x + 40.0 < mx + s.width as f64 / k && *y + 40.0 < my + s.height as f64 / k }));
     let guard = app.clone();
     let load_guard = app.clone();
+    let popup_guard = app.clone();
     let builder = WebviewWindowBuilder::new(app, "main", initial)
         .title("Haven")
         .inner_size(width, height)
@@ -176,6 +201,7 @@ fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String
             crate::nav_fail::on_page_load(&load_guard, &payload);
         })
         .on_download(|_, _| true)
+        .on_new_window(move |url, _| if new_window(&popup_guard, &url) { tauri::webview::NewWindowResponse::Allow } else { tauri::webview::NewWindowResponse::Deny })
         .devtools(true)
         .disable_drag_drop_handler()
         .theme(Some(tauri::Theme::Dark))

@@ -37,31 +37,6 @@
     return 'linux';
   }
 
-  // A Tauri webview has no window-open handler, so target="_blank" and
-  // window.open() did nothing. Same-server links (message deep links, game
-  // pop-outs) navigate in place; anything else goes to the system browser.
-  const nativeOpen = window.open;
-  window.open = function (url, target, features) {
-    try {
-      const u = new URL(url, window.location.href);
-      if (u.origin === window.location.origin) {
-        if (/^\/(app(\.html)?|c\/[A-Za-z0-9]+)/.test(u.pathname) || u.searchParams.has('channel') || u.searchParams.has('message')) {
-          window.location.assign(u.href);
-          return null;
-        }
-        return nativeOpen ? nativeOpen.call(window, u.href, target, features) : null;
-      }
-      if (u.protocol === 'http:' || u.protocol === 'https:') invoke('open_external', { url: u.href }).catch(() => {});
-    } catch {}
-    return null;
-  };
-  document.addEventListener('click', (e) => {
-    const a = e.target && e.target.closest && e.target.closest('a[href]');
-    if (!a || a.target !== '_blank') return;
-    e.preventDefault();
-    window.open(a.href, '_blank');
-  }, true);
-
   // Themed app icon and title bar, like the mobile launcher icon: send the
   // active theme id and its live colors whenever data-theme changes.
   let lastTheme = '';
@@ -599,6 +574,17 @@
   listen('voice:ptt-down', () => pttSetTalking(true));
   listen('voice:ptt-up', () => pttSetTalking(false));
 
+  listen('app:navigate-deep-link', ({ code, messageId, url } = {}) => {
+    try {
+      if (code && window.app?.switchChannel) {
+        window.app.switchChannel(code);
+        const id = parseInt(messageId, 10);
+        if (id && window.app?._jumpToMessage) setTimeout(() => { try { window.app._jumpToMessage(id); } catch {} }, 600);
+        return;
+      }
+    } catch {}
+    if (url) location.href = url;
+  });
   // ── Auto-update banner ───────────────────────────────────
   (function setupAutoUpdateBanner() {
     let bannerEl = null;
