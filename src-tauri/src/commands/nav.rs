@@ -176,6 +176,7 @@ fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String
             crate::nav_fail::on_page_load(&load_guard, &payload);
         })
         .on_download(|_, _| true)
+        .devtools(true)
         .disable_drag_drop_handler()
         .theme(Some(tauri::Theme::Dark))
         .background_color(tauri::webview::Color(13, 13, 26, 255))
