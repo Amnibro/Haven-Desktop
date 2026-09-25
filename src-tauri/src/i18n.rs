@@ -113,13 +113,12 @@ const PT_BR: &[(&str, &str)] = &[
 ];
 
 fn lookup(locale: &str, key: &str) -> Option<&'static str> {
-    let table = if locale.eq_ignore_ascii_case("pt-BR") || locale.eq_ignore_ascii_case("pt") {
-        PT_BR
-    } else {
-        EN
-    };
-    table.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+    let pt = locale.eq_ignore_ascii_case("pt-BR") || locale.eq_ignore_ascii_case("pt");
+    let (table, upstream): (&[(&str, &str)], &'static std::collections::HashMap<String, String>) = if pt { (PT_BR, &UPSTREAM_PT_BR) } else { (EN, &UPSTREAM_EN) };
+    table.iter().find(|(k, _)| *k == key).map(|(_, v)| *v).or_else(|| upstream.get(key).map(String::as_str))
 }
+static UPSTREAM_EN: once_cell::sync::Lazy<std::collections::HashMap<String, String>> = once_cell::sync::Lazy::new(|| serde_json::from_str(include_str!("../locales/electron-en.json")).unwrap_or_default());
+static UPSTREAM_PT_BR: once_cell::sync::Lazy<std::collections::HashMap<String, String>> = once_cell::sync::Lazy::new(|| serde_json::from_str(include_str!("../locales/electron-pt-BR.json")).unwrap_or_default());
 
 pub fn supported_locales() -> Vec<LocaleInfo> {
     vec![

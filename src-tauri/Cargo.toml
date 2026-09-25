@@ -53,6 +53,8 @@ windows-core = "0.61"
 tauri-plugin-global-shortcut = "=3.0.0-alpha.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+notify-rust = "4.18"
+zbus = "5.19"
 sha2 = "0.10"
 tauri-runtime-cef = { version = "=3.0.0-alpha.2", features = ["devtools"] }
 

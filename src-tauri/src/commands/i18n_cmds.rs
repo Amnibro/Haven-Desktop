@@ -1,7 +1,7 @@
 use crate::i18n;
 use crate::state::{self, AppState};
 use serde_json::json;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[tauri::command]
 pub fn i18n_get_state(app: AppHandle) -> Result<i18n::I18nState, String> {
@@ -14,6 +14,12 @@ pub fn i18n_set_language(
     state: State<AppState>,
     preference: String,
 ) -> Result<i18n::I18nState, String> {
+    let _ = state;
+    set_language(&app, preference)
+}
+
+pub(crate) fn set_language(app: &AppHandle, preference: String) -> Result<i18n::I18nState, String> {
+    let state = app.state::<AppState>();
     let mut pref = preference;
     if pref == "system" {
         pref = "auto".into();
@@ -23,14 +29,15 @@ pub fn i18n_set_language(
             .iter()
             .any(|l| l.code == pref);
     if !supported {
-        return state::i18n_state(&app);
+        return state::i18n_state(app);
     }
-    state::set_value(&app, "language", json!(pref))?;
-    state::set_value(&app, "languagePreferenceSet", json!(true))?;
-    let locale = state::refresh_locale(&app)?;
+    state::set_value(app, "language", json!(pref))?;
+    state::set_value(app, "languagePreferenceSet", json!(true))?;
+    let locale = state::refresh_locale(app)?;
     *state.current_locale.lock() = locale;
-    let i18n_state = state::i18n_state(&app)?;
+    let i18n_state = state::i18n_state(app)?;
     let _ = app.emit("i18n:changed", &i18n_state);
+    crate::tray::rebuild(app);
     Ok(i18n_state)
 }
 

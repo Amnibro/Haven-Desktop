@@ -47,13 +47,15 @@ pub async fn server_start(app: AppHandle, dir: String) -> Result<serde_json::Val
         }
         state::set_value(&app, "userPrefs", prefs)?;
     }
+    crate::tray::rebuild(&app);
     Ok(serde_json::to_value(result).unwrap_or(json!({ "success": false })))
 }
 
 #[tauri::command]
-pub fn server_stop(state: State<AppState>) -> Result<serde_json::Value, String> {
-    let mut mgr = state.server.lock();
-    Ok(serde_json::to_value(mgr.stop_server()).unwrap_or(json!({})))
+pub fn server_stop(app: AppHandle, state: State<AppState>) -> Result<serde_json::Value, String> {
+    let result = state.server.lock().stop_server();
+    crate::tray::rebuild(&app);
+    Ok(serde_json::to_value(result).unwrap_or(json!({})))
 }
 
 #[tauri::command]

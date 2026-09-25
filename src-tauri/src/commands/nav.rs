@@ -249,7 +249,9 @@ fn show_welcome(app: &AppHandle) -> Result<(), String> {
     create_welcome_window(app)
 }
 
-fn go_back_to_welcome(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn go_back_to_welcome(app: &AppHandle) -> Result<(), String> {
+    let tray_app = app.clone();
+    let _rebuild = TrayRebuild(tray_app);
     let state = app.state::<AppState>();
     *state.active_server_url.lock() = None;
     *state.returning_to_welcome.lock() = true;
@@ -285,7 +287,9 @@ pub async fn nav_switch_server(app: AppHandle, server_url: String) -> Result<(),
     switch_server(&app, &server_url)
 }
 
-fn switch_server(app: &AppHandle, server_url: &str) -> Result<(), String> {
+pub(crate) fn switch_server(app: &AppHandle, server_url: &str) -> Result<(), String> {
+    let tray_app = app.clone();
+    let _rebuild = TrayRebuild(tray_app);
     let normalized = state::normalize_server_url(server_url)
         .ok_or_else(|| "invalid server URL".to_string())?;
     *app.state::<AppState>().active_server_url.lock() = Some(normalized.clone());
@@ -317,4 +321,11 @@ pub async fn nav_change_primary_server(app: AppHandle, server_url: String) -> Re
     }
     state::set_value(&app, "userPrefs", prefs)?;
     open_app_window(&app, &normalized)
+}
+
+struct TrayRebuild(AppHandle);
+impl Drop for TrayRebuild {
+    fn drop(&mut self) {
+        crate::tray::rebuild(&self.0);
+    }
 }

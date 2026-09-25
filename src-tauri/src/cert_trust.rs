@@ -33,16 +33,6 @@ fn settle(host: &str, ok: bool) {
         c(ok);
     }
 }
-fn reason(code: &str) -> &'static str {
-    match code.trim_start_matches("Errorcode(").trim_end_matches(')') {
-        "ERR_CERT_AUTHORITY_INVALID" => "it is self-signed or from an unknown issuer",
-        "ERR_CERT_COMMON_NAME_INVALID" => "it was issued for a different name",
-        "ERR_CERT_DATE_INVALID" => "it has expired or is not valid yet",
-        "ERR_CERT_REVOKED" => "it has been revoked",
-        "ERR_CERT_WEAK_KEY" | "ERR_CERT_WEAK_SIGNATURE_ALGORITHM" => "it uses weak cryptography",
-        _ => "it did not pass verification",
-    }
-}
 pub fn decide(app: &AppHandle, err: tauri_runtime_cef::CertificateError, cont: Cont) {
     let (host, fp) = (err.host.clone(), fingerprint(&err.der));
     if err.der.is_empty() || REFUSED.lock().contains(&host) {
@@ -61,12 +51,13 @@ pub fn decide(app: &AppHandle, err: tauri_runtime_cef::CertificateError, cont: C
         }
     }
     let shown = host.trim_end_matches(":443");
+    let t = |k: &str| crate::state::t(app, k).replace("{host}", shown);
     let (title, body, yes) = match pinned {
-        Some(old) => ("Certificate changed", format!("The certificate for {shown} is not the one you trusted before.\n\nThis happens when the server owner replaces it, but it can also mean someone is intercepting the connection. Only continue if you expected the change.\n\nTrusted before:\n{old}\n\nNow:\n{fp}"), "Trust the new certificate"),
-        None => ("Untrusted certificate", format!("{shown} uses a certificate your computer does not trust: {}. Servers you host yourself usually do this.\n\nOnly trust it if you know this server. Its SHA-256 fingerprint:\n{fp}\n\nHaven remembers your answer and warns you if the certificate ever changes.", reason(&err.error)), "Trust this server"),
+        Some(old) => (t("cert.title"), format!("{}\n\n{}\n\n{}\n{}", t("cert.changedMessage"), t("cert.changedDetail"), t("cert.previousFingerprint").replace("{value}", &old), t("cert.fingerprint").replace("{value}", &fp)), t("cert.trustNew")),
+        None => (t("cert.title"), format!("{}\n\n{}\n\n{}", t("cert.unknownMessage"), t("cert.unknownDetail"), t("cert.fingerprint").replace("{value}", &fp)), t("cert.trust")),
     };
     let (app2, host2) = (app.clone(), host.clone());
-    app.dialog().message(body).title(title).kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom(yes.into(), "Cancel".into())).show(move |ok| {
+    app.dialog().message(body).title(title).kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom(yes, crate::state::t(app, "dialog.cancel"))).show(move |ok| {
         if ok {
             pin(&app2, &host2, &fp);
         }

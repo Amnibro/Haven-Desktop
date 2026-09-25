@@ -1,5 +1,7 @@
 #[cfg(target_os = "linux")]
 mod cert_trust;
+#[cfg(target_os = "linux")]
+mod linux_desktop;
 mod audio;
 mod commands;
 mod i18n;
@@ -11,33 +13,33 @@ mod theme_icon;
 mod tray;
 
 use state::AppState;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 /// Ask the GitHub release feed once at startup; on a newer build, offer to
 /// install it (signed with the key in ~/.tauri, verified against the pubkey
 /// in tauri.conf.json) and relaunch. Failures stay silent: offline is normal.
-fn check_for_update(app: tauri::AppHandle) {
+pub(crate) fn check_for_update(app: tauri::AppHandle, manual: bool) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     use tauri_plugin_updater::UpdaterExt;
     tauri::async_runtime::spawn(async move {
-        let Ok(updater) = app.updater() else { return };
-        let Ok(Some(update)) = updater.check().await else { return };
-        let msg = format!(
-            "Haven Desktop {} is available (you have {}). Install it now? Haven restarts when it is done.",
-            update.version, update.current_version
-        );
-        let yes = app
-            .dialog()
-            .message(msg)
-            .title("Update available")
-            .buttons(MessageDialogButtons::OkCancelCustom("Install".into(), "Later".into()))
-            .blocking_show();
+        let t = |k: &str| state::t(&app, k);
+        let say = |msg: String| { app.dialog().message(msg).title("Haven Desktop").buttons(MessageDialogButtons::OkCustom(t("update.ok"))).show(|_| {}); };
+        let result = match app.updater() { Ok(u) => u.check().await.map_err(|e| e.to_string()), Err(e) => Err(e.to_string()) };
+        let update = match result {
+            Ok(Some(u)) => u,
+            Ok(None) => { if manual { say(t("update.upToDate").replace("{version}", &app.package_info().version.to_string())); } return; }
+            Err(e) => { if manual { say(t("update.error").replace("{error}", &e)); } return; }
+        };
+        let yes = app.dialog().message(t("update.available").replace("{version}", &update.version)).title("Haven Desktop").buttons(MessageDialogButtons::OkCancelCustom(t("update.now"), t("dialog.cancel"))).blocking_show();
         if !yes {
             return;
         }
-        if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
-            app.restart();
+        let _ = app.emit("update:download-progress", 0);
+        let (mut got, h) = (0u64, app.clone());
+        match update.download_and_install(move |chunk, total| { got += chunk as u64; if let Some(t) = total.filter(|t| *t > 0) { let _ = h.emit("update:download-progress", got * 100 / t); } }, || {}).await {
+            Ok(()) => app.restart(),
+            Err(e) => say(t("update.failed").replace("{error}", &e.to_string())),
         }
     });
 }
@@ -148,7 +150,7 @@ pub fn run() {
                 let (bg, fg) = theme_icon::stored(app.handle());
                 theme_icon::apply(app.handle(), bg, fg);
             }
-            check_for_update(app.handle().clone());
+            check_for_update(app.handle().clone(), false);
             // Saved mute / deafen / push-to-talk keys were only registered when
             // the settings page re-saved them, so after a restart they did nothing.
             let _ = commands::shortcuts_register(app.handle().clone(), serde_json::json!({}));
@@ -210,7 +212,7 @@ pub fn run() {
             if window.label() == "main" {
                 let main = window.app_handle().get_webview_window("main");
                 match event {
-                    tauri::WindowEvent::Focused(f) => { if let Some(w) = &main { if *f { lowmem::set_low_memory(w, false); } let _ = w.eval(&format!("window.__havenFocus&&window.__havenFocus({f})")); } }
+                    tauri::WindowEvent::Focused(f) => { if let Some(w) = &main { if *f { lowmem::set_low_memory(w, false); let _ = w.request_user_attention(None); } let _ = w.eval(&format!("window.__havenFocus&&window.__havenFocus({f})")); } }
                     tauri::WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => { if let Some(w) = &main { lowmem::set_low_memory(w, true); } }
                     _ => {}
                 }

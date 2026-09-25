@@ -2046,6 +2046,7 @@ dependencies = [
  "base64 0.22.1",
  "cc",
  "dirs 6.0.0",
+ "notify-rust",
  "once_cell",
  "parking_lot",
  "pkg-config",
@@ -2072,6 +2073,7 @@ dependencies = [
  "which",
  "windows-core 0.61.2",
  "windows-sys 0.59.0",
+ "zbus",
 ]
 
 [[package]]

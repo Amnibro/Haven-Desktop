@@ -2,6 +2,7 @@ use crate::state::{self, AppState};
 use serde::Deserialize;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager, State};
+#[cfg(not(target_os = "linux"))]
 use tauri_plugin_notification::NotificationExt;
 
 #[derive(Debug, Deserialize)]
@@ -17,17 +18,18 @@ pub struct NotifyOpts {
 pub fn notify(app: AppHandle, opts: NotifyOpts) -> Result<bool, String> {
     let title = opts.title.unwrap_or_else(|| "Haven".into());
     let body = opts.body.unwrap_or_default();
-    let mut builder = app.notification().builder().title(title).body(body);
-    if opts.silent.unwrap_or(false) {
-        builder = builder.silent();
+    #[cfg(target_os = "linux")]
+    return crate::linux_desktop::notify(&app, &title, &body, opts.silent.unwrap_or(false), opts.channel_code).map(|_| true);
+    #[cfg(not(target_os = "linux"))]
+    {
+        let mut builder = app.notification().builder().title(title).body(body);
+        if opts.silent.unwrap_or(false) {
+            builder = builder.silent();
+        }
+        builder.show().map_err(|e| e.to_string())?;
+        let _ = opts.channel_code;
+        Ok(true)
     }
-    builder.show().map_err(|e| e.to_string())?;
-
-    // Desktop toasts through notify-rust carry no click callback, so there is
-    // nothing to emit here. Emitting "notification-clicked" on show made the
-    // web app switch channels every time a message arrived.
-    let _ = opts.channel_code;
-    Ok(true)
 }
 
 #[tauri::command]
@@ -44,6 +46,8 @@ pub fn notification_badge(
     let _ = app.emit("server-badge-update", payload);
     // Red dot on the taskbar icon while anything is unread (Electron's overlay
     // icon). Tauri only implements set_overlay_icon on Windows.
+    #[cfg(target_os = "linux")]
+    crate::linux_desktop::set_unread(&app, badges.values().filter(|v| **v).count());
     #[cfg(windows)]
     if let Some(main) = app.get_webview_window("main") {
         let any = badges.values().any(|v| *v);
