@@ -158,8 +158,12 @@ pub fn run() {
                 commands::accept_self_signed(&welcome);
             }
 
+            #[cfg(target_os = "linux")]
+            let _ = commands::apply_autostart(app.handle());
+            let hidden = std::env::args().any(|a| a == "--hidden") && tray::available();
             // Welcome starts hidden so skipWelcome never flashes Host / Join.
             let prefs = state::get_user_prefs(app.handle())?;
+            let host_path = (prefs.get("mode").and_then(|v| v.as_str()) == Some("host")).then(|| prefs.get("serverPath").and_then(|v| v.as_str()).map(str::to_string)).flatten().filter(|p| !p.is_empty());
             let skip = prefs
                 .get("skipWelcome")
                 .and_then(|v| v.as_bool())
@@ -173,8 +177,22 @@ pub fn run() {
                 if let Some(url) = remembered {
                     let handle = app.handle().clone();
                     std::thread::spawn(move || {
+                        let url = match host_path {
+                            Some(dir) => {
+                                let res = handle.state::<AppState>().server.lock().start_server(&dir);
+                                tray::rebuild(&handle);
+                                if !res.success {
+                                    if let Some(welcome) = handle.get_webview_window("welcome") { let _ = welcome.show(); let _ = welcome.set_focus(); }
+                                    return;
+                                }
+                                res.url.unwrap_or(url)
+                            }
+                            None => url,
+                        };
                         // A failure here used to leave nothing but a tray icon.
-                        if commands::open_app_window(&handle, &url).is_err() {
+                        let opened = commands::open_app_window(&handle, &url);
+                        if opened.is_ok() && hidden { if let Some(main) = handle.get_webview_window("main") { let _ = main.hide(); } }
+                        if opened.is_err() {
                             if let Some(welcome) = handle.get_webview_window("welcome") {
                                 let _ = welcome.show();
                                 let _ = welcome.set_focus();
@@ -185,7 +203,7 @@ pub fn run() {
                     let _ = welcome.show();
                     let _ = welcome.set_focus();
                 }
-            } else if let Some(welcome) = app.get_webview_window("welcome") {
+            } else if let (Some(welcome), false) = (app.get_webview_window("welcome"), hidden) {
                 let _ = welcome.show();
                 let _ = welcome.set_focus();
             }
