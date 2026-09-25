@@ -56,6 +56,7 @@ tauri-plugin-global-shortcut = "=3.0.0-alpha.1"
 notify-rust = "4.18"
 zbus = "5.19"
 sha2 = "0.10"
+x11-dl = "2.21"
 tauri-runtime-cef = { version = "=3.0.0-alpha.2", features = ["devtools"] }
 
 [patch.crates-io]

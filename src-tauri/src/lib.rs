@@ -2,6 +2,8 @@
 mod cert_trust;
 #[cfg(target_os = "linux")]
 mod linux_desktop;
+#[cfg(target_os = "linux")]
+mod ptt_hook;
 mod audio;
 mod commands;
 mod i18n;
