@@ -191,6 +191,19 @@ pub fn run() {
 
             Ok(())
         })
+        .on_web_content_process_terminate(|webview, _| {
+            static LAST: once_cell::sync::Lazy<parking_lot::Mutex<(u32, std::time::Instant)>> = once_cell::sync::Lazy::new(|| parking_lot::Mutex::new((0, std::time::Instant::now())));
+            if webview.label() != "main" {
+                return;
+            }
+            let n = { let mut l = LAST.lock(); l.0 = if l.1.elapsed().as_secs() > 60 { 1 } else { l.0 + 1 }; l.1 = std::time::Instant::now(); l.0 };
+            let (w, app) = (webview.clone(), webview.app_handle().clone());
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(500 * 2u64.pow(n.min(5))));
+                let url = app.state::<state::AppState>().active_server_url.lock().clone();
+                let _ = match url.filter(|_| n > 5).and_then(|u| state::build_server_app_url(&u).parse().ok()) { Some(u) => w.navigate(u), None => w.reload() };
+            });
+        })
         .on_window_event(|window, event| {
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_)) && !window.is_minimized().unwrap_or(false) {
                 let (app, max) = (window.app_handle(), window.is_maximized().unwrap_or(false));
