@@ -2,6 +2,24 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v3.0.0-tauri (2026-09-25)
+
+Level with Electron 1.4.37. On Linux the app now runs on Chromium (CEF) instead of WebKitGTK.
+
+- **Voice and screen share work on Linux.** Microphone and camera permissions are answered, and screen share goes through the desktop's own picker (PipeWire portal).
+- **Screen share with app audio.** A picker made by the app, not the server page, asks which app's sound to share. Server pages can no longer list the apps playing sound or start a capture (Electron 1.4.37).
+- **Certificates like Electron 1.4.37.** A remote server's self-signed certificate is trusted once when you say so, remembered, and you are warned if it changes. This computer and the local network stay automatic, and servers you used before are remembered without asking.
+- **Security (Electron 1.4.36).** Server pages get only the bridge's own commands. They can no longer read or change the app's settings or read the clipboard.
+- **Desktop integration.** Clickable notifications that open the channel, an unread count on the launcher icon, taskbar flash that stops on focus, a full tray menu (updates, server switch, language, status), start on login and start hidden.
+- **Updates in the app.** A banner offers new versions, shows download progress and restarts to install. Check for Updates stays in the tray.
+- **Push to talk** on Mouse4, Mouse5, middle click or a lone Ctrl, Alt, Shift or Super, in hold and toggle mode.
+- **Downloads and pictures.** Attachments open a save dialog, the image menu has Save image as, dropped files reach the page, and server pictures open in their own window.
+- **Links.** Message links switch channel in place; links to other sites open in the system browser.
+- **Recent Servers** under Join a Server, with remove.
+- Window size, position and maximized state are restored. DevTools on F12. The page reloads itself if it crashes. Force SDR, disable vsync and unlimited frame rate take effect on the next start.
+- Fixed: the window froze as soon as a signed-in page reported its unread state.
+- Packaging: the deb and AppImage carry Chromium; the deb needs GTK 4.14 (Ubuntu 24.04, Debian 13 or newer).
+
 ## v2.5.3-tauri (2026-09-24)
 
 - **Pictures copied from a browser paste on Linux.** A picture copied from Chrome, Amni Browse or a web page ("Copy image") puts an HTML `<img>` next to the image. WebKitGTK exposes only the HTML, and the paste rescue stood down whenever any text type was present, so nothing pasted. It now stands down only for real plain text, stops the stray HTML paste, and reads the picture instead.
