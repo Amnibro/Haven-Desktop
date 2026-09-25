@@ -80,6 +80,11 @@ const BROWSER_ONLY_COMMANDS: &[&CStr] = &[
   resources::IDC_CONTENT_CONTEXT_SHARING_SUBMENU,
   resources::IDC_CONTENT_CONTEXT_GENERATE_QR_CODE,
   resources::IDC_ROUTE_MEDIA,
+  resources::IDC_CONTENT_CONTEXT_SPELLING_TOGGLE,
+  resources::IDC_SHARING_HUB,
+  resources::IDC_SEND_TAB_TO_SELF,
+  resources::IDC_CONTENT_CONTEXT_GLICSHAREIMAGE,
+  resources::IDC_CONTENT_CONTEXT_RESHARELINKTOTEXT,
 ];
 
 /// Entries that open DevTools. Kept when the webview enables devtools, removed
