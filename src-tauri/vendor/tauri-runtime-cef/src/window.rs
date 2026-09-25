@@ -310,6 +310,8 @@ pub(crate) fn max_size_constraint(
 
 pub(crate) enum WindowMessage {
   AddEventListener(WindowEventId, WindowEventListener),
+  #[cfg(target_os = "linux")]
+  SyncVisibility,
   Close,
   Destroy,
   ScaleFactor(Sender<Result<f64>>),
@@ -696,6 +698,13 @@ impl<T: UserEvent> WinitCefApp<T> {
       appwindow.set_visible_on_all_workspaces(appwindow.attrs.visible_on_all_workspaces);
       appwindow.set_skip_taskbar(appwindow.attrs.skip_taskbar);
       appwindow.apply_transient_for();
+      use winit::platform::gtk4::WindowExtGtk4;
+      if let Some(gtk_window) = appwindow.window.gtk_window() {
+        let context = self.context.clone();
+        gtk::prelude::GtkWindowExt::connect_suspended_notify(&gtk_window, move |_| {
+          let _ = context.send_message(Message::Window { window_id, message: WindowMessage::SyncVisibility });
+        });
+      }
     }
 
     #[cfg(windows)]
@@ -985,8 +994,21 @@ impl<T: UserEvent> WinitCefApp<T> {
       WindowMessage::Unmaximize => window.set_maximized(false),
       WindowMessage::Minimize => window.set_minimized(true),
       WindowMessage::Unminimize => window.set_minimized(false),
-      WindowMessage::Show => window.set_visible(true),
-      WindowMessage::Hide => window.set_visible(false),
+      WindowMessage::Show => {
+        window.set_visible(true);
+        appwindow.children.iter().for_each(|c| c.host.was_hidden(0));
+      }
+      WindowMessage::Hide => {
+        window.set_visible(false);
+        appwindow.children.iter().for_each(|c| c.host.was_hidden(1));
+      }
+      #[cfg(target_os = "linux")]
+      WindowMessage::SyncVisibility => {
+        use gtk::prelude::GtkWindowExt;
+        use winit::platform::gtk4::WindowExtGtk4;
+        let hidden = window.gtk_window().is_some_and(|w| w.is_suspended() || !gtk::prelude::WidgetExt::is_visible(&w));
+        appwindow.children.iter().for_each(|c| c.host.was_hidden(hidden as i32));
+      }
       WindowMessage::SetDecorations(value) => window.set_decorations(value),
       WindowMessage::SetSize(size) => _ = window.request_surface_size(size),
       WindowMessage::SetPosition(position) => window.set_outer_position(position),
