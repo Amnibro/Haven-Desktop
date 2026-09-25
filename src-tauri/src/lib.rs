@@ -43,7 +43,13 @@ fn check_for_update(app: tauri::AppHandle) {
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "linux")]
-    let builder = builder.runtime(tauri_runtime_cef::Cef::default().command_line_arg("ignore-certificate-errors", None::<String>).disable_features(["LocalNetworkAccessChecks"]));
+    let cef = tauri_runtime_cef::Cef::default().command_line_arg("ignore-certificate-errors", None::<String>).command_line_arg("password-store", Some("basic")).disable_features(["LocalNetworkAccessChecks"]);
+    #[cfg(all(target_os = "linux", debug_assertions))]
+    let cef = match std::env::var("HAVEN_CEF_DEBUG_PORT").ok().and_then(|p| p.parse::<u16>().ok()) { Some(port) => cef.remote_debugging(tauri_runtime_cef::RemoteDebugging::Port { port, allowed_origins: vec![] }).command_line_arg("use-fake-device-for-media-stream", None::<String>).command_line_arg("use-fake-ui-for-media-stream", None::<String>), None => cef };
+    #[cfg(target_os = "linux")]
+    let builder = builder.runtime(cef);
+    #[cfg(target_os = "linux")]
+    let builder = builder.on_permission_request(|_, kind| { use tauri::webview::{PermissionKind as K, PermissionResponse as R}; match kind { K::Microphone | K::Camera | K::DisplayCapture | K::Notifications | K::ClipboardRead => R::Allow, _ => R::Default } });
     builder
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // A second launch (taskbar pin, Start menu) focuses the running app
