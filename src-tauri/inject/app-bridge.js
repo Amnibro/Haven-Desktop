@@ -370,16 +370,6 @@
     },
 
     audio: {
-      getApplications: () => invoke('audio_get_apps'),
-      startCapture: async (pid) => {
-        _capturedAudioPid = pid;
-        const ok = await buildAudioPipeline();
-        if (!ok) {
-          _capturedAudioPid = null;
-          return false;
-        }
-        return invoke('audio_start_capture', { pid, mode: 'include' });
-      },
       stopCapture: () => {
         teardownAudioPipeline();
         return invoke('audio_stop_capture');
@@ -410,11 +400,6 @@
     setUnreadBadge: (hasUnread) =>
       invoke('notification_badge', { hasUnread: !!hasUnread }),
 
-    settings: {
-      get: (key) => invoke('settings_get', { key }),
-      set: (key, val) => invoke('settings_set', { key, value: val }),
-    },
-
     window: {
       minimize: () => invoke('window_minimize'),
       maximize: () => invoke('window_maximize'),
@@ -424,7 +409,6 @@
     getVersion: () => invoke('app_version'),
 
     clipboardWriteImage: (payload) => invoke('clipboard_write_image', { payload }),
-    clipboardReadImage: () => invoke('clipboard_read_image'),
     clipboardWriteText: (text) => invoke('clipboard_write_text', { text }),
     saveImage: ({ bytes, filename } = {}) =>
       invoke('save_image', { payload: bytes || '', filename: filename || 'haven-image.png' }),
@@ -589,41 +573,6 @@
     }, true);
   })();
 
-  // ── Paste rescue for WebKitGTK ───────────────────────────
-  // A bitmap on the Linux clipboard reaches the page as a paste event whose
-  // DataTransfer has no items and no files (WebKit bug 218519), so Haven's
-  // composer sees nothing to queue. Ask the clipboard plugin for the picture
-  // and replay the paste with a real File; the page handler takes it from
-  // there exactly as it does on WebView2.
-  (function () {
-    if (detectPlatform() !== 'linux') return;
-    let busy = false;
-    document.addEventListener('paste', (e) => {
-      if (e.__havenReplay || busy) return;
-      const dt = e.clipboardData;
-      const hasFile = !!dt && Array.from(dt.items || []).some((i) => i.kind === 'file');
-      const plain = dt ? (dt.getData('text/plain') || '') : '';
-      if (hasFile || plain.trim()) return;
-      const markupOnly = !!dt && (dt.types || []).length > 0;
-      if (markupOnly) e.preventDefault();
-      const warn = (m) => { try { window.app && window.app._showToast && window.app._showToast(m, 'error'); } catch (x) {} };
-      const target = e.target;
-      busy = true;
-      const guard = setTimeout(() => { busy = false; }, 10000);
-      invoke('clipboard_read_image').then(async (res) => {
-        if (!res || !res.ok || !res.dataUrl) { markupOnly && warn("Couldn't paste the picture: " + ((res && res.reason) || 'no picture on the clipboard')); return console.warn('[haven] clipboard image unavailable:', res && res.reason); }
-        const bin = atob(res.dataUrl.slice(res.dataUrl.indexOf(',') + 1));
-        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-        const file = new File([bytes], 'pasted-image.png', { type: 'image/png' });
-        const replay = new DataTransfer();
-        replay.items.add(file);
-        const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: replay });
-        ev.__havenReplay = true;
-        (target || document.activeElement || document.body).dispatchEvent(ev);
-      }).catch((err) => { warn("Couldn't paste the picture: " + err); console.warn('[haven] paste rescue failed:', err); }).finally(() => { clearTimeout(guard); busy = false; });
-    }, true);
-  })();
-
   // ── Voice shortcut events ────────────────────────────────
   function clickVoice(id) {
     document.getElementById(id)?.click();
@@ -654,8 +603,13 @@
     const orig = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getDisplayMedia = async function (constraints) {
       _lastNativeStatus = null;
-      const stream = await orig(constraints);
-
+      teardownAudioPipeline();
+      const pick = await invoke('share_picker_open');
+      if (!pick || !pick.ok) throw new DOMException('Screen share cancelled', 'NotAllowedError');
+      if (pick.audio && !(await buildAudioPipeline())) { invoke('audio_stop_capture').catch(() => {}); pick.audio = false; }
+      _capturedAudioPid = pick.audio ? 'native' : null;
+      let stream;
+      try { stream = await orig(Object.assign({}, constraints || {}, { audio: false })); } catch (e) { if (pick.audio) { teardownAudioPipeline(); invoke('audio_stop_capture').catch(() => {}); } throw e; }
       if (_capturedAudioPid) {
         const timeoutMs = 8000;
         const start = Date.now();
@@ -678,127 +632,11 @@
       }
 
       stream.getVideoTracks().forEach((t) =>
-        t.addEventListener('ended', () => teardownAudioPipeline())
+        t.addEventListener('ended', () => { teardownAudioPipeline(); invoke('audio_stop_capture').catch(() => {}); })
       );
       return stream;
     };
   }
-
-  // ── Simplified screen picker (if main emits screen:show-picker) ──
-  function showScreenPicker(sources, audioApps, requestId) {
-    document.getElementById('haven-screen-picker')?.remove();
-    const overlay = document.createElement('div');
-    overlay.id = 'haven-screen-picker';
-    overlay.innerHTML = `
-      <style>
-        #haven-screen-picker{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
-        .hsp-box{background:#1a1a2e;border-radius:14px;padding:24px;max-width:820px;width:92%;max-height:82vh;display:flex;flex-direction:column;border:1px solid rgba(107,79,219,.3)}
-        .hsp-title{color:#e0e0e0;font-size:18px;font-weight:700;margin-bottom:4px}
-        .hsp-sub{color:#888;font-size:13px;margin-bottom:12px}
-        .hsp-scroll{flex:1;overflow-y:auto;min-height:0}.hsp-sec{margin-bottom:12px}
-        .hsp-sec-title{color:#aaa;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
-        .hsp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
-        .hsp-src{background:#16213e;border-radius:8px;padding:8px;cursor:pointer;border:2px solid transparent}
-        .hsp-src.sel{border-color:#6b4fdb}
-        .hsp-src-name{color:#ccc;font-size:12px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .hsp-apps{display:flex;flex-wrap:wrap;gap:8px}
-        .hsp-app{background:#16213e;border-radius:6px;padding:8px 12px;cursor:pointer;border:2px solid transparent;color:#ccc;font-size:13px}
-        .hsp-app.sel{border-color:#6b4fdb}
-        .hsp-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}
-        .hsp-btn{padding:8px 18px;border-radius:6px;border:none;font-size:14px;cursor:pointer;font-weight:600}
-        .hsp-cancel{background:#333;color:#ccc}.hsp-go{background:#6b4fdb;color:#fff}.hsp-go:disabled{opacity:.45;cursor:not-allowed}
-      </style>
-      <div class="hsp-box">
-        <div class="hsp-title">Share Your Screen</div>
-        <div class="hsp-sub">Pick a screen or window, optionally isolate app audio.</div>
-        <div class="hsp-scroll">
-          <div class="hsp-sec"><div class="hsp-sec-title">Screens</div><div class="hsp-grid" id="hsp-screens"></div></div>
-          <div class="hsp-sec"><div class="hsp-sec-title">Windows</div><div class="hsp-grid" id="hsp-windows"></div></div>
-        </div>
-        <div class="hsp-sec"><div class="hsp-sec-title">Application Audio</div><div class="hsp-apps" id="hsp-audio-apps"></div></div>
-        <div class="hsp-btns">
-          <button class="hsp-btn hsp-cancel" id="hsp-cancel">Cancel</button>
-          <button class="hsp-btn hsp-go" id="hsp-go" disabled>Share</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    let selSource = null;
-    let selAudioPid = 'system';
-    const screensEl = document.getElementById('hsp-screens');
-    const windowsEl = document.getElementById('hsp-windows');
-    const appsEl = document.getElementById('hsp-audio-apps');
-    const goBtn = document.getElementById('hsp-go');
-
-    (sources || []).forEach((src) => {
-      const el = document.createElement('div');
-      el.className = 'hsp-src';
-      const name = document.createElement('div');
-      name.className = 'hsp-src-name';
-      name.textContent = src.name || src.id;
-      el.appendChild(name);
-      el.onclick = () => {
-        overlay.querySelectorAll('.hsp-src.sel').forEach((s) => s.classList.remove('sel'));
-        el.classList.add('sel');
-        selSource = src.id;
-        goBtn.disabled = false;
-      };
-      (String(src.id || '').startsWith('screen:') ? screensEl : windowsEl).appendChild(el);
-    });
-
-    function addApp(label, pid, selected) {
-      const el = document.createElement('div');
-      el.className = 'hsp-app' + (selected ? ' sel' : '');
-      el.textContent = label;
-      el.onclick = () => {
-        appsEl.querySelectorAll('.sel').forEach((a) => a.classList.remove('sel'));
-        el.classList.add('sel');
-        selAudioPid = pid;
-      };
-      appsEl.appendChild(el);
-    }
-    addApp('🔇 No Audio', 'none', false);
-    addApp('🔊 System Audio', 'system', true);
-    (audioApps || []).forEach((a) => addApp(a.name || `PID ${a.pid}`, a.pid, false));
-
-    let dismissed = false;
-    const dismiss = async (cancelled) => {
-      if (dismissed) return;
-      dismissed = true;
-      overlay.remove();
-      document.removeEventListener('keydown', escHandler, true);
-
-      if (!cancelled && selAudioPid && selAudioPid !== 'none' && typeof selAudioPid === 'number') {
-        _capturedAudioPid = selAudioPid;
-        const ok = await buildAudioPipeline();
-        if (ok) await invoke('audio_start_capture', { pid: selAudioPid, mode: 'include' }).catch(() => {});
-        else _capturedAudioPid = null;
-      }
-
-      try {
-        await invoke('screen_picker_result', {
-          requestId,
-          cancelled: !!cancelled,
-          sourceId: selSource,
-          audioAppPid: selAudioPid,
-        });
-      } catch {
-        // Optional command — Tauri may rely on native getDisplayMedia instead.
-      }
-    };
-
-    document.getElementById('hsp-cancel').onclick = () => dismiss(true);
-    goBtn.onclick = () => dismiss(false);
-    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) dismiss(true); });
-    const escHandler = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(true); }
-    };
-    document.addEventListener('keydown', escHandler, true);
-  }
-
-  listen('screen:show-picker', (data) => {
-    showScreenPicker(data?.sources || [], data?.audioApps || [], data?.requestId || null);
-  });
 
   // ── DOMContentLoaded: voice state, login switcher, GDM ───
   function normalizeServerUrl(input) {

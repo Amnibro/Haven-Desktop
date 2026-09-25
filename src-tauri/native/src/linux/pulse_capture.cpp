@@ -169,12 +169,11 @@ void PulseCapture::emitStatus(CaptureStatusKind kind, const std::string& msg, in
 }
 
 bool PulseCapture::IsSupported() const {
-    // Check if PulseAudio is available
-    pa_simple* s = nullptr;
-    pa_sample_spec ss = { PA_SAMPLE_FLOAT32LE, 48000, 1 };
-    s = pa_simple_new(nullptr, "HavenProbe", PA_STREAM_RECORD, nullptr, "probe", &ss, nullptr, nullptr, nullptr);
-    if (s) { pa_simple_free(s); return true; }
-    return false;
+    // Only connect to the sound server. Opening a record stream on the default
+    // source, as this used to, lit the microphone indicator on every check and
+    // blocked when no default source existed.
+    PaSync pa;
+    return pa.connect();
 }
 
 std::vector<AudioApp> PulseCapture::GetAudioApplications() {

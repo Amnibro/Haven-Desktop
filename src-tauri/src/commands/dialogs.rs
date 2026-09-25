@@ -138,32 +138,6 @@ pub fn clipboard_write_image(app: AppHandle, payload: String) -> Result<serde_js
 /// page a paste event with an empty DataTransfer for a bitmap (WebKit bug
 /// 218519), so the bridge asks here and re-dispatches the paste with a File.
 #[tauri::command]
-pub fn clipboard_read_image(app: AppHandle) -> Result<serde_json::Value, String> {
-    let image = match app.clipboard().read_image() {
-        Ok(img) => img,
-        Err(e) => return Ok(json!({ "ok": false, "reason": e.to_string() })),
-    };
-    let (w, h) = (image.width(), image.height());
-    let rgba = image.rgba();
-    if w == 0 || h == 0 || rgba.len() < (w * h * 4) as usize {
-        return Ok(json!({ "ok": false, "reason": "empty-image" }));
-    }
-    let Some(mut pm) = tiny_skia::Pixmap::new(w, h) else {
-        return Ok(json!({ "ok": false, "reason": "pixmap" }));
-    };
-    for (dst, src) in pm.data_mut().chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
-        let a = src[3] as u32;
-        dst[0] = ((src[0] as u32 * a + 127) / 255) as u8;
-        dst[1] = ((src[1] as u32 * a + 127) / 255) as u8;
-        dst[2] = ((src[2] as u32 * a + 127) / 255) as u8;
-        dst[3] = src[3];
-    }
-    let png = pm.encode_png().map_err(|e| e.to_string())?;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-    Ok(json!({ "ok": true, "width": w, "height": h, "dataUrl": format!("data:image/png;base64,{b64}") }))
-}
-
-#[tauri::command]
 pub async fn save_image(
     app: AppHandle,
     payload: String,

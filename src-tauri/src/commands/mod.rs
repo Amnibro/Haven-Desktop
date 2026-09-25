@@ -7,6 +7,7 @@ mod nav;
 mod notify;
 mod server;
 mod settings;
+mod share;
 mod shortcuts;
 mod window_cmds;
 
@@ -19,5 +20,6 @@ pub use nav::*;
 pub use notify::*;
 pub use server::*;
 pub use settings::*;
+pub use share::*;
 pub use shortcuts::*;
 pub use window_cmds::*;

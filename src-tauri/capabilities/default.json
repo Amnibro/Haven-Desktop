@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Default capabilities for Haven Desktop (local UI + remote Haven servers)",
-  "windows": ["welcome", "main"],
-  "remote": {
-    "urls": ["http://*", "https://*", "http://*:*", "https://*:*"]
-  },
+  "identifier": "local",
+  "description": "Haven Desktop's own pages (welcome, local UI): full command set",
+  "windows": [
+    "welcome",
+    "main",
+    "share-picker"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-close",

@@ -1,4 +1,6 @@
 fn main() {
+    println!("cargo:rerun-if-changed=native");
+    println!("cargo:rerun-if-changed=build.rs");
     let mut build = cc::Build::new();
     build.cpp(true);
     build.std("c++17");
