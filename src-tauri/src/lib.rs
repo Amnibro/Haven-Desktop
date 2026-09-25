@@ -41,7 +41,10 @@ fn check_for_update(app: tauri::AppHandle) {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "linux")]
+    let builder = builder.runtime(tauri_runtime_cef::Cef::default().command_line_arg("ignore-certificate-errors", None::<String>).disable_features(["LocalNetworkAccessChecks"]));
+    builder
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // A second launch (taskbar pin, Start menu) focuses the running app
             // instead of booting a second copy, like Electron's requestSingleInstanceLock.
@@ -125,7 +128,7 @@ pub fn run() {
             let _ = app.store("haven-desktop.json")?;
             state::ensure_defaults(app.handle())?;
             state::refresh_locale(app.handle())?;
-            tray::setup_tray(app.handle())?;
+            match tray::setup_tray(app.handle()) { Ok(()) => tray::mark_up(), Err(e) => eprintln!("haven: no system tray ({e}); running without one") }
             {
                 let (bg, fg) = theme_icon::stored(app.handle());
                 theme_icon::apply(app.handle(), bg, fg);
@@ -205,7 +208,7 @@ pub fn run() {
                         *app.state::<state::AppState>().returning_to_welcome.lock() = false;
                         return;
                     }
-                    if let Ok(true) = state::get_bool(app, "minimizeToTray") {
+                    if let (Ok(true), true) = (state::get_bool(app, "minimizeToTray"), tray::available()) {
                         api.prevent_close();
                         let _ = window.hide();
                         if let Some(w) = app.get_webview_window("main") {

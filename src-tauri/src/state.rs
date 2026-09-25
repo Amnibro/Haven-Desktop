@@ -42,7 +42,7 @@ impl Default for AppState {
 
 const STORE_NAME: &str = "haven-desktop.json";
 
-pub fn store(app: &AppHandle) -> Result<Arc<tauri_plugin_store::Store<tauri::Wry>>, String> {
+pub fn store(app: &AppHandle) -> Result<Arc<tauri_plugin_store::Store<tauri::DynRuntime>>, String> {
     app.store(STORE_NAME).map_err(|e| e.to_string())
 }
 

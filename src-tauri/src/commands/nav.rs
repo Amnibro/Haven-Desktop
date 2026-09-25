@@ -23,84 +23,9 @@ const EMBED_ORIGINS: [&str; 5] = [
     "https://challenges.cloudflare.com",
 ];
 
-/// Linux counterpart of `--ignore-certificate-errors`: WebKitGTK rejects
-/// self-signed certificates unless the web context's TLS policy says otherwise.
-/// macOS (WKWebView) has no equivalent hook in wry; a self-signed server there
-/// needs a trusted cert or plain http.
-pub fn accept_self_signed(window: &tauri::WebviewWindow) {
-    #[cfg(target_os = "linux")]
-    {
-        use webkit2gtk::{SettingsExt, TLSErrorsPolicy, WebContextExt, WebViewExt};
-        let _ = window.with_webview(|w| {
-            if let Some(ctx) = w.inner().web_context() {
-                ctx.set_tls_errors_policy(TLSErrorsPolicy::Ignore);
-            }
-            // WebKitGTK ships with WebRTC and media capture switched off and
-            // wry never turns them on, so the page had no RTCPeerConnection
-            // and Haven's STUN probe reported every server dead. The setting
-            // only helps on a WebKit built with ENABLE_WEB_RTC (Amni OS
-            // rebuilds webkit2gtk-4.1 that way; stock Arch does not).
-            if let Some(settings) = w.inner().settings() {
-                settings.set_enable_webrtc(true);
-                settings.set_enable_media_stream(true);
-            }
-            attach_script_dialogs(&w.inner());
-        });
-    }
-    #[cfg(not(target_os = "linux"))]
-    let _ = window;
-}
-
-/// alert / confirm / prompt as real GTK dialogs. WebKitGTK's own in-view
-/// overlay never appeared in this app, so confirm() answered on its own and
-/// Haven's "remove server?" / "delete user?" checks never really asked.
-/// Answering from the signal keeps the page's call synchronous, like a browser.
-#[cfg(target_os = "linux")]
-fn attach_script_dialogs(view: &webkit2gtk::WebView) {
-    use gtk::prelude::*;
-    use webkit2gtk::{ScriptDialogType, WebViewExt};
-    view.connect_script_dialog(|view, dialog| {
-        let kind = dialog.dialog_type();
-        let message = dialog.message().map(|m| m.to_string()).unwrap_or_default();
-        let parent = view.toplevel().and_then(|t| t.downcast::<gtk::Window>().ok());
-        let (msg_type, buttons) = match kind {
-            ScriptDialogType::Alert => (gtk::MessageType::Info, gtk::ButtonsType::Ok),
-            _ => (gtk::MessageType::Question, gtk::ButtonsType::OkCancel),
-        };
-        let md = gtk::MessageDialog::new(
-            parent.as_ref(),
-            gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
-            msg_type,
-            buttons,
-            &message,
-        );
-        md.set_title("Haven");
-        let entry = (kind == ScriptDialogType::Prompt).then(|| {
-            let entry = gtk::Entry::new();
-            entry.set_text(dialog.prompt_get_default_text().as_deref().unwrap_or(""));
-            entry.set_activates_default(true);
-            md.content_area().pack_end(&entry, false, false, 6);
-            entry.show();
-            entry
-        });
-        md.set_default_response(gtk::ResponseType::Ok);
-        let ok = md.run() == gtk::ResponseType::Ok;
-        match kind {
-            ScriptDialogType::Confirm | ScriptDialogType::BeforeUnloadConfirm => {
-                dialog.confirm_set_confirmed(ok)
-            }
-            // Leaving the text unset is how WebKit reports a cancelled prompt (null).
-            ScriptDialogType::Prompt if ok => {
-                if let Some(entry) = &entry {
-                    dialog.prompt_set_text(&entry.text());
-                }
-            }
-            _ => {}
-        }
-        unsafe { md.destroy() };
-        true
-    });
-}
+/// Self-signed servers: Linux runs on CEF with `--ignore-certificate-errors` (set on
+/// the runtime in lib.rs), Windows passes the same switch to WebView2.
+pub fn accept_self_signed(_window: &tauri::WebviewWindow) {}
 
 fn same_origin(url: &Url, server: &str) -> bool {
     Url::parse(server)
