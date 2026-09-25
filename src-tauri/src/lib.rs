@@ -209,7 +209,7 @@ pub fn run() {
                 let (app, max) = (window.app_handle(), window.is_maximized().unwrap_or(false));
                 let mut prev = state::get_value(app, "windowBounds").unwrap_or_default();
                 let bounds = match (window.inner_size(), window.outer_position(), window.scale_factor()) {
-                    (Ok(s), Ok(p), Ok(k)) if !max && s.width as f64 / k >= 800.0 && s.height as f64 / k >= 600.0 => serde_json::json!({ "x": p.x as f64 / k, "y": p.y as f64 / k, "width": s.width as f64 / k, "height": s.height as f64 / k, "maximized": false }),
+                    (Ok(s), Ok(p), Ok(k)) if !max && s.width as f64 / k >= 800.0 && s.height as f64 / k >= 600.0 => serde_json::json!({ "x": (p.x as f64 / k).round() as i64, "y": (p.y as f64 / k).round() as i64, "width": (s.width as f64 / k).round() as u64, "height": (s.height as f64 / k).round() as u64, "maximized": false }),
                     _ => { prev["maximized"] = serde_json::json!(max); prev }
                 };
                 let _ = state::set_value(app, "windowBounds", bounds);
