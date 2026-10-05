@@ -44,6 +44,11 @@ export async function installWelcomeBridge(): Promise<void> {
       onLog: (cb: (m: string) => void) => {
         void listen<string>("server:log", (e) => cb(e.payload));
       },
+      history: {
+        get: () => invoke<Array<{ url: string; name?: string; lastConnected?: number }>>("server_history_get"),
+        add: (url: string, name?: string) => invoke("server_history_add", { url, name }),
+        remove: (url: string) => invoke("server_history_remove", { url }),
+      },
     },
 
     settings: {
@@ -60,6 +65,12 @@ export async function installWelcomeBridge(): Promise<void> {
     nav: {
       openApp: (serverUrl: string) =>
         invoke("nav_open_app", { serverUrl }).then(() => undefined),
+      switchServer: (serverUrl: string) =>
+        invoke("nav_switch_server", { serverUrl }).then(() => undefined),
+      changePrimaryServer: (serverUrl: string) =>
+        invoke("nav_change_primary_server", { serverUrl }).then(() => undefined),
+      backToWelcome: () =>
+        invoke("nav_back_to_welcome").then(() => undefined),
     },
 
     update: {

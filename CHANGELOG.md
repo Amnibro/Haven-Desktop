@@ -2,6 +2,26 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.5.5-tauri (2026-10-05)
+
+- **Pop-up windows open.** Linking Steam or Spotify under Connections, the single sign-on consent page and game pop-outs called `window.open`, which a Tauri webview silently refused, so Haven reported "allow pop-ups" and nothing happened. Pop-ups now open in their own Haven window, close themselves when the page finishes, and have no access to the desktop bridge.
+- **No false "Connection Problem" page.** A load that was superseded (Haven sending a signed-out `/app` to the login page, a blocked external link, a download) was treated as the server being down.
+- **Microphone, camera and screen share on Linux.** WebKitGTK refuses media and device-list requests that nobody answers, so voice, webcam, screen share and named input devices failed. The app window now grants them (location stays denied).
+- **Downloads on Linux.** Backups, audit logs and attachments save to the Downloads folder under a non-clashing name, with a notification saying where. Attachment links marked `download` are no longer turned into pop-ups.
+- **Clicking a notification on Linux** brings Haven forward and opens the channel the message came from.
+- **Start on login** really registers the app with the system, and **Start hidden** keeps the window in the tray on that launch.
+- **OpenID sign-in** stays inside the app instead of bouncing the identity provider to the system browser.
+- **Pasted file paths** are only read when that file is actually on the clipboard, so a server page can no longer ask the app to read arbitrary local files.
+- Real STUN connectivity warnings are shown again when the webview has WebRTC (Windows, Amni OS); only WebRTC-less WebKit builds hide them.
+- Shortcuts the system cannot register say so instead of reporting a conflict, the window size is saved without a disk write on every resize step, and returning to Welcome without an open server no longer leaves the next close stuck.
+
+## v2.5.4-tauri (2026-09-29)
+
+- **Notification banners for the channel you have open.** Haven only shows a banner for the open channel when the page is hidden, and WebKitGTK keeps the page "visible" while the window sits unfocused behind other windows, so those messages played the sound with no banner, on every server. The bridge now shows the banner itself when the window lacks OS focus (mentions, replies and DMs as usual, mutes respected), and stands down on servers whose own client already accounts for focus.
+- **File uploads (zip, tar, pdf, etc.) via drag & drop and paste on Linux.** Disables Tauri's native drag-drop interception on webview windows so WebKitGTK's HTML5 drag-and-drop reaches the chat composer and message area. Also adds native `clipboard_read_files` command reading Linux clipboard file targets (`text/uri-list`, Nautilus/GNOME copied files) via Wayland (`wl-paste`) and X11 (`xclip`) when copying files in Linux file managers (Nautilus, Dolphin, Thunar) and pasting with Ctrl+V, reading the file data on the desktop host and cleanly queuing it into the composer attachment queue.
+- **Fixed false "Couldn't paste the picture" toast on file paste.** Because WebKitGTK blocks DOM DataTransfer access to `text/uri-list` on paste events, pasting non-plain-text content like a copied `.zip` file previously fell through to `clipboard_read_image` and triggered a misleading error toast. The bridge now checks native clipboard files first and suppresses spurious image error toasts when clipboard content is not an image.
+- **Suppress false STUN/TURN connectivity warnings.** When WebKitGTK is built without WebRTC (`-DENABLE_WEB_RTC=OFF`), STUN probes throw `ReferenceError` on `RTCPeerConnection`, falsely claiming all STUN servers are unreachable. The desktop bridge and web client now check if WebRTC is supported before probing and suppress false STUN unreachable warning toasts across all servers (including synchronous pre-paint suppression on older remote servers like `haven.moviethingy.xyz`).
+
 ## v2.5.3-tauri (2026-09-24)
 
 - **Pictures copied from a browser paste on Linux.** A picture copied from Chrome, Amni Browse or a web page ("Copy image") puts an HTML `<img>` next to the image. WebKitGTK exposes only the HTML, and the paste rescue stood down whenever any text type was present, so nothing pasted. It now stands down only for real plain text, stops the stray HTML paste, and reads the picture instead.

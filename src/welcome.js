@@ -78,7 +78,7 @@
   // ═══════ Page 1 — Choose Mode ═══════════════════════════
 
   $('#card-host').onclick = () => { showPage('#page-host'); detectServer(); };
-  $('#card-join').onclick = () => { showPage('#page-join'); $('#server-url').focus(); };
+  $('#card-join').onclick = () => { showPage('#page-join'); $('#server-url').focus(); loadRecentServers(); };
 
   // ═══════ Page 2a — Host Flow ════════════════════════════
 
@@ -194,6 +194,47 @@
   urlInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !connectBtn.disabled) connectBtn.click();
   });
+
+  async function loadRecentServers() {
+    const section = $('#join-recent-section');
+    const list = $('#join-recent-list');
+    if (!section || !list) return;
+
+    try {
+      const history = await (window.haven?.server?.history?.get ? window.haven.server.history.get() : Promise.resolve([])).catch(() => []);
+      if (!history || !history.length) {
+        section.style.display = 'none';
+        return;
+      }
+      section.style.display = 'block';
+      list.innerHTML = '';
+      const sorted = [...history].sort((a, b) => (b.lastConnected || 0) - (a.lastConnected || 0));
+      sorted.forEach((entry) => {
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;transition:all .18s;font-size:12px;';
+        let hostName = entry.url;
+        try { hostName = new URL(entry.url).hostname; } catch {}
+        const name = (entry.name && entry.name !== entry.url) ? entry.name : hostName;
+        item.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:2px;overflow:hidden;text-align:left;">
+            <span style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}</span>
+            <span style="font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${entry.url}</span>
+          </div>
+          <span style="color:var(--accent);font-weight:600;flex-shrink:0;margin-left:8px;">Connect →</span>
+        `;
+        item.onmouseenter = () => { item.style.borderColor = 'var(--accent)'; item.style.background = 'rgba(107, 79, 219, .12)'; };
+        item.onmouseleave = () => { item.style.borderColor = 'var(--border)'; item.style.background = 'var(--surface2)'; };
+        item.onclick = () => {
+          urlInput.value = entry.url;
+          connectBtn.disabled = false;
+          connectBtn.click();
+        };
+        list.appendChild(item);
+      });
+    } catch {
+      section.style.display = 'none';
+    }
+  }
 
   connectBtn.onclick = async () => {
     let url = urlInput.value.trim();

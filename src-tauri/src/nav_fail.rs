@@ -280,8 +280,40 @@ pub fn nav_connection_info(app: AppHandle, state: tauri::State<AppState>) -> Res
 pub fn attach_fail_watch(window: &WebviewWindow, app: AppHandle) {
     #[cfg(windows)]
     attach_webview2(window, app);
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    attach_webkit2(window, app);
+    #[cfg(not(any(windows, target_os = "linux")))]
     let _ = (window, app);
+}
+
+#[cfg(target_os = "linux")]
+fn attach_webkit2(window: &WebviewWindow, app: AppHandle) {
+    use webkit2gtk::WebViewExt;
+    let _ = window.with_webview(move |w| {
+        let view = w.inner();
+        let app_handle = app.clone();
+        view.connect_load_failed(move |_view, _event, uri, error| {
+            if error.matches(webkit2gtk::NetworkError::Cancelled) || error.matches(webkit2gtk::PolicyError::FrameLoadInterruptedByPolicyChange) || error.matches(webkit2gtk::PolicyError::CannotShowMimeType) {
+                return false;
+            }
+            if let Ok(parsed) = Url::parse(uri) {
+                if is_desktop_asset_url(&parsed) {
+                    return false;
+                }
+            }
+            let failed = app_handle
+                .state::<AppState>()
+                .active_server_url
+                .lock()
+                .clone()
+                .unwrap_or_else(|| uri.to_string());
+            let app_main = app_handle.clone();
+            let _ = app_handle.run_on_main_thread(move || {
+                show_connection_error(&app_main, &failed);
+            });
+            true
+        });
+    });
 }
 
 #[cfg(windows)]

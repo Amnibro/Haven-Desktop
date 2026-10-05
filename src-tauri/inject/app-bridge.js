@@ -9,6 +9,455 @@
     return core.invoke(cmd, args);
   }
   invoke('nav_page_ready').catch(() => {});
+
+  // ── Loading indicator overlay (eliminates theme & customization setup flicker) ──
+  (function initLoadingOverlay() {
+    try {
+      const p = window.location.pathname || '';
+      const h = window.location.host || '';
+      if (p.includes('connection-error.html') || p.includes('splash.html') || h.includes('tauri.localhost')) {
+        return;
+      }
+    } catch {
+      return;
+    }
+
+    // Fast-path redirect for unauthenticated sessions accessing /app:
+    // If we land on /app without a token, Haven's app.js will unconditionally
+    // redirect to '/' via window.location.href = '/'. Doing it immediately here
+    // avoids downloading/parsing 380 KB of app scripts and eliminates the
+    // double-navigation flicker before reaching the login screen.
+    try {
+      const p = window.location.pathname || '';
+      const isAppPath = p === '/app' || p.startsWith('/app/') || p.includes('app.html');
+      const hasToken = !!localStorage.getItem('haven_token');
+      if (isAppPath && !hasToken) {
+        window.location.replace('/');
+        return;
+      }
+    } catch {}
+
+    const style = document.createElement('style');
+    style.id = 'haven-desktop-loader-style';
+    style.textContent = `
+      html.haven-loading-active,
+      html.haven-loading-active body {
+        overflow: hidden !important;
+      }
+      #haven-desktop-loading-overlay {
+        position: fixed !important;
+        top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+        width: 100vw !important; height: 100vh !important;
+        background: #0d0d1a !important;
+        z-index: 2147483647 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        color: #e0e0e0 !important;
+        user-select: none !important;
+        pointer-events: all !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.28s !important;
+      }
+      #haven-desktop-loading-overlay.hdl-fade-out {
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+      }
+      .hdl-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        text-align: center;
+        padding: 24px;
+      }
+      .hdl-hex {
+        font-size: 54px;
+        line-height: 1;
+        color: #8b6ce7;
+        animation: hdlPulse 1.6s ease-in-out infinite;
+      }
+      .hdl-title {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: #fff;
+        margin: 0;
+      }
+      .hdl-spinner {
+        width: 26px;
+        height: 26px;
+        border: 2.5px solid rgba(139, 108, 231, 0.22);
+        border-top-color: #8b6ce7;
+        border-radius: 50%;
+        animation: hdlSpin 0.75s linear infinite;
+      }
+      .hdl-status {
+        font-size: 13px;
+        color: #9a96b0;
+        margin: 0;
+        min-height: 18px;
+        transition: color 0.2s ease;
+      }
+      .hdl-back-btn {
+        margin-top: 10px;
+        background: #1a1a34;
+        color: #e0e0e0;
+        border: 1px solid #2a2a50;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .hdl-back-btn:hover {
+        background: #2a2a50;
+        border-color: #6b4fdb;
+        color: #fff;
+      }
+      @keyframes hdlPulse {
+        0%, 100% { opacity: 0.55; transform: scale(0.96); }
+        50% { opacity: 1; transform: scale(1.04); }
+      }
+      @keyframes hdlSpin {
+        to { transform: rotate(360deg); }
+      }
+    `;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'haven-desktop-loading-overlay';
+    overlay.innerHTML = `
+      <div class="hdl-container">
+        <div class="hdl-hex" aria-hidden="true">⬡</div>
+        <h1 class="hdl-title">Haven</h1>
+        <div class="hdl-spinner" aria-label="Loading"></div>
+        <p class="hdl-status" id="hdl-status-text">Loading Haven…</p>
+        <button class="hdl-back-btn" id="hdl-back-btn" style="display:none">← Pick a Different Server</button>
+      </div>
+    `;
+
+    function tryMount() {
+      const root = document.documentElement || document.body;
+      if (!root) return false;
+      if (!document.getElementById('haven-desktop-loader-style')) {
+        root.appendChild(style);
+      }
+      if (!document.getElementById('haven-desktop-loading-overlay')) {
+        root.appendChild(overlay);
+        root.classList.add('haven-loading-active');
+        const btn = overlay.querySelector('#hdl-back-btn');
+        if (btn) {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            invoke('nav_back_to_welcome').catch(() => {});
+          };
+        }
+      }
+      return true;
+    }
+
+    if (!tryMount()) {
+      const rootObserver = new MutationObserver(() => {
+        if (tryMount()) {
+          rootObserver.disconnect();
+        }
+      });
+      rootObserver.observe(document, { childList: true });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', tryMount, { once: true });
+    }
+    window.addEventListener('load', tryMount, { once: true });
+
+    // If server load is slow or hanging (>2.5s), show back button on the loader
+    const slowTimer = setTimeout(() => {
+      const statusEl = document.getElementById('hdl-status-text');
+      const btn = document.getElementById('hdl-back-btn');
+      if (statusEl) statusEl.textContent = 'Server is taking longer than usual to respond…';
+      if (btn) btn.style.display = 'inline-block';
+    }, 2500);
+
+    let dismissed = false;
+    let dismissing = false;
+    const startTime = Date.now();
+
+    function dismissLoader() {
+      if (dismissed) return;
+      dismissed = true;
+      clearTimeout(slowTimer);
+      const root = document.documentElement;
+      if (root) root.classList.remove('haven-loading-active');
+      const el = document.getElementById('haven-desktop-loading-overlay');
+      if (el) {
+        el.classList.add('hdl-fade-out');
+        setTimeout(() => {
+          try { el.remove(); } catch {}
+          try { style.remove(); } catch {}
+        }, 300);
+      }
+    }
+
+    function areThemeStylesheetsReady() {
+      const sheets = document.querySelectorAll(
+        'link[id^="haven-theme-"], link[id="haven-theme-file-early"], link[href*="/themes/"], link[id^="haven-plugin-style-"], link[data-theme-loading]'
+      );
+      for (const link of sheets) {
+        if (link.getAttribute('data-theme-loading') === '1') return false;
+        if (!link.sheet) return false;
+        try {
+          if (link.sheet.cssRules && link.sheet.cssRules.length === 0 && !link.sheet.href) {
+            return false;
+          }
+        } catch {}
+      }
+      return true;
+    }
+
+    function isPluginLoaderReady() {
+      if (document.documentElement.hasAttribute('data-haven-customizations-ready')) return true;
+      const loader = window.HavenPluginLoader;
+      if (!loader) return false;
+      if (typeof loader.isReady === 'boolean') return loader.isReady;
+      if (loader.loadedThemes && loader.loadedThemes.size > 0) return true;
+      if (document.documentElement.hasAttribute('data-haven-safe-mode')) return true;
+      return false;
+    }
+
+    function areSocketPrefsSettled() {
+      const hasToken = !!(
+        (window.app && window.app.token) ||
+        (() => { try { return localStorage.getItem('token'); } catch { return null; } })()
+      );
+      if (!hasToken) return true;
+      if (window.app) {
+        if (window.app._userPrefs !== undefined) return true;
+        if (window.app.socket && window.app.socket.disconnected && window.app.socket.active === false) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function areFontsReady() {
+      if (document.fonts && document.fonts.status === 'loading') return false;
+      return true;
+    }
+
+    function isAuthPage() {
+      return !!(
+        document.querySelector('.auth-page') ||
+        document.querySelector('.auth-container') ||
+        document.querySelector('#login-form') ||
+        document.querySelector('#register-form')
+      );
+    }
+
+    function isAppPage() {
+      return !!(
+        document.getElementById('app') ||
+        document.getElementById('app-body') ||
+        document.querySelector('.sidebar') ||
+        document.querySelector('.channel-list')
+      );
+    }
+
+    function isAuthPageReady(elapsed) {
+      if (document.readyState !== 'complete') return false;
+
+      // Check if i18n has translated the login submit button
+      const submitBtn = document.querySelector('button[type="submit"]');
+      if (submitBtn && submitBtn.textContent && submitBtn.textContent.includes('auth.login.')) {
+        return false;
+      }
+
+      // Check if auth theme bar / version has loaded from /api/themes and /api/public-config
+      const versionEl = document.getElementById('auth-version');
+      const themeBar = document.getElementById('auth-theme-bar');
+      const themeBarPopulated = !!(themeBar && themeBar.children && themeBar.children.length > 0);
+      const versionLoaded = !!(versionEl && versionEl.textContent && versionEl.textContent.trim().length > 0);
+
+      // Give auth.js up to 700ms to fetch /api/themes and /api/public-config
+      if (!themeBarPopulated && !versionLoaded && elapsed < 700) {
+        return false;
+      }
+
+      // Check if theme stylesheets are still downloading / loading
+      if (!areThemeStylesheetsReady()) return false;
+
+      // Check if fonts are ready
+      if (!areFontsReady() && elapsed < 1200) return false;
+
+      return true;
+    }
+
+    function isAppPageReady(elapsed) {
+      if (document.readyState !== 'complete') return false;
+
+      // Check if theme is still pending
+      if (document.documentElement.hasAttribute('data-haven-theme-pending')) return false;
+
+      // Check theme stylesheets downloading/parsing
+      if (!areThemeStylesheetsReady()) return false;
+
+      // Check plugin/theme loader
+      if (!isPluginLoaderReady() && elapsed < 2600) return false;
+
+      // Check socket preferences
+      if (!areSocketPrefsSettled() && elapsed < 2000) return false;
+
+      // Check web fonts
+      if (!areFontsReady() && elapsed < 1500) return false;
+
+      return true;
+    }
+
+    function finishAndDismiss() {
+      if (dismissed || dismissing) return;
+      dismissing = true;
+      const statusEl = document.getElementById('hdl-status-text');
+      if (statusEl) statusEl.textContent = 'Ready';
+
+      // Double requestAnimationFrame guarantees that style recalculation, layout reflow,
+      // and paint to the GPU backbuffer have fully executed before revealing the window.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTimeout(dismissLoader, 70);
+        });
+      });
+    }
+
+    function checkReady() {
+      if (dismissed || dismissing) return;
+      const elapsed = Date.now() - startTime;
+
+      if (isAuthPage()) {
+        if (isAuthPageReady(elapsed)) {
+          finishAndDismiss();
+          return;
+        }
+      } else if (isAppPage()) {
+        if (isAppPageReady(elapsed)) {
+          finishAndDismiss();
+          return;
+        }
+      }
+
+      // Hard safety timeout: after 4.5s, always dismiss
+      if (elapsed > 4500) {
+        dismissLoader();
+      }
+    }
+
+    const interval = setInterval(() => {
+      checkReady();
+      if (dismissed) clearInterval(interval);
+    }, 35);
+
+    // Listen for custom readiness events
+    window.addEventListener('haven:customizations-ready', checkReady);
+    window.addEventListener('haven:theme-changed', checkReady);
+    window.addEventListener('haven:plugins-loaded', checkReady);
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(checkReady).catch(() => {});
+    }
+
+    // Safety timeout
+    setTimeout(dismissLoader, 4800);
+  })();
+
+  // ── Suppress false STUN/TURN unreachable warnings ──────────
+  // WebKitGTK compiled without WebRTC has undefined RTCPeerConnection, causing false
+  // "All STUN servers unreachable" errors across remote servers (e.g. haven.moviethingy.xyz).
+  // 1. Purge any false STUN toasts from DOM immediately via MutationObserver.
+  const noRtc = typeof window.RTCPeerConnection === 'undefined';
+  const isStunWarning = (text) => {
+    return noRtc && typeof text === 'string' && (
+      text.includes('Voice connection servers (STUN) are unreachable') ||
+      text.includes('Configured voice servers (STUN) are unreachable') ||
+      text.includes('STUN servers failed probe')
+    );
+  };
+
+  const killStunToast = (node) => {
+    try {
+      if (node && node.nodeType === 1) {
+        if (isStunWarning(node.textContent)) {
+          console.info('[haven-desktop] Purged false STUN toast from DOM');
+          node.remove();
+        }
+      }
+    } catch {}
+  };
+  try {
+    const toastObs = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const n of m.addedNodes) {
+          killStunToast(n);
+          if (n.querySelectorAll) n.querySelectorAll('.toast').forEach(killStunToast);
+        }
+      }
+    });
+    const root = document.documentElement || document;
+    toastObs.observe(root, { childList: true, subtree: true });
+  } catch {}
+
+  // 2. Synchronously intercept window.app and patch _showToast and voice.
+  let _havenApp = undefined;
+  function patchApp(inst) {
+    if (!inst || inst.__havenAppPatched) return;
+    inst.__havenAppPatched = true;
+    try {
+      const origProto = Object.getPrototypeOf(inst);
+      const origToast = (origProto && origProto._showToast) || inst._showToast;
+      const safeToast = function (msg, ...args) {
+        if (isStunWarning(msg)) {
+          console.info('[haven-desktop] Dropped false STUN toast:', msg);
+          return;
+        }
+        return origToast ? origToast.call(this, msg, ...args) : undefined;
+      };
+      inst._showToast = safeToast;
+      if (origProto) origProto._showToast = safeToast;
+
+      const sanitizeVoice = (v) => {
+        if (!v || v.__havenVoicePatched || !noRtc) return;
+        v.__havenVoicePatched = true;
+        v.onConnectivityWarning = () => {};
+        v._probeDefaultStun = () => Promise.resolve();
+        v._probeConfiguredStun = () => Promise.resolve();
+      };
+      if (inst.voice) sanitizeVoice(inst.voice);
+      let _v = inst.voice;
+      try {
+        Object.defineProperty(inst, 'voice', {
+          configurable: true,
+          enumerable: true,
+          get() { return _v; },
+          set(v) { _v = v; if (v) sanitizeVoice(v); }
+        });
+      } catch {}
+    } catch (e) {
+      console.warn('[haven-desktop] patchApp error:', e);
+    }
+  }
+
+  try {
+    Object.defineProperty(window, 'app', {
+      configurable: true,
+      enumerable: true,
+      get() { return _havenApp; },
+      set(inst) {
+        _havenApp = inst;
+        if (inst) patchApp(inst);
+      }
+    });
+  } catch {}
+
   let havenFocused = document.hasFocus();
   const patchSocketEmit = () => {
     const proto = window.io?.Socket?.prototype;
@@ -23,6 +472,27 @@
   window.__havenFocus = (f) => { havenFocused = !!f; window.app?.socket?.emit?.('visibility-change', { visible: !document.hidden }); };
   document.addEventListener('DOMContentLoaded', () => { havenFocused = document.hasFocus(); });
   window.addEventListener('focus', () => havenFocused || window.__havenFocus(true));
+  // WebKitGTK keeps document.hidden false while the window sits unfocused, and
+  // Haven only pops a banner for the open channel when the page is hidden, so
+  // those messages played the sound with no banner. Fire it here instead, unless
+  // the server's own client already folds focus in (_pageUnseen).
+  const hookFocusNotify = () => {
+    const a = window.app, s = a?.socket;
+    if (!s?.on || !a.user || s.__havenFocusNotify) return;
+    s.__havenFocusNotify = true;
+    s.on('new-message', (d) => {
+      try {
+        const m = d?.message;
+        if (havenFocused || document.hidden || !m || d.channelCode !== a.currentChannel || m.user_id === a.user?.id) return;
+        if (typeof a._pageUnseen === 'function' || typeof a._fireNativeNotification !== 'function' || a._isDesktopBackgroundView?.()) return;
+        if (localStorage.getItem('haven_server_muted') === '1' || JSON.parse(localStorage.getItem('haven_muted_channels') || '[]').includes(d.channelCode)) return;
+        const c = m.content || '', me = (a.user.username || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), ch = a.channels?.find((x) => x.code === d.channelCode);
+        const mention = (me && new RegExp(`@${me}(?!\\w)`, 'i').test(c)) || /(?<![\w@])@(everyone|here)\b/i.test(c) || a._mentionsMyRole?.(c);
+        a._fireNativeNotification(m, d.channelCode, mention ? { isMention: true } : m.replyContext?.user_id === a.user.id ? { isReply: true } : ch?.is_dm ? { isDm: true } : null);
+      } catch (e) { console.warn('[haven-desktop] focus notify', e); }
+    });
+  };
+  setInterval(hookFocusNotify, 2000);
 
   async function listen(event, handler) {
     const eventApi = window.__TAURI__?.event;
@@ -37,10 +507,8 @@
     return 'linux';
   }
 
-  // A Tauri webview has no window-open handler, so target="_blank" and
-  // window.open() did nothing. Same-server links (message deep links, game
-  // pop-outs) navigate in place; anything else goes to the system browser.
   const nativeOpen = window.open;
+  const popup = (href, target, features) => (nativeOpen && nativeOpen.call(window, href, target, features)) || { closed: false, close() { this.closed = true; }, focus() {}, blur() {}, postMessage() {}, location: { href } };
   window.open = function (url, target, features) {
     try {
       const u = new URL(url, window.location.href);
@@ -49,15 +517,16 @@
           window.location.assign(u.href);
           return null;
         }
-        return nativeOpen ? nativeOpen.call(window, u.href, target, features) : null;
+        return popup(u.href, target, features);
       }
+      if (/^\/api\/auth\/SSO$/i.test(u.pathname)) return popup(u.href, target, features);
       if (u.protocol === 'http:' || u.protocol === 'https:') invoke('open_external', { url: u.href }).catch(() => {});
     } catch {}
     return null;
   };
   document.addEventListener('click', (e) => {
     const a = e.target && e.target.closest && e.target.closest('a[href]');
-    if (!a || a.target !== '_blank') return;
+    if (!a || a.target !== '_blank' || a.hasAttribute('download')) return;
     e.preventDefault();
     window.open(a.href, '_blank');
   }, true);
@@ -589,40 +1058,404 @@
     }, true);
   })();
 
-  // ── Paste rescue for WebKitGTK ───────────────────────────
-  // A bitmap on the Linux clipboard reaches the page as a paste event whose
-  // DataTransfer has no items and no files (WebKit bug 218519), so Haven's
-  // composer sees nothing to queue. Ask the clipboard plugin for the picture
-  // and replay the paste with a real File; the page handler takes it from
-  // there exactly as it does on WebView2.
+  // ── Helper to route queued files directly into the active Haven composer ──
+  function queueFilesIntoActiveHavenComposer(files, targetEl) {
+    const app = window.app;
+    if (!app || !files || files.length === 0) return false;
+
+    const threadPanel = document.getElementById('thread-panel');
+    const isThreadOpen = !!(threadPanel && threadPanel.style.display !== 'none' && !threadPanel.classList.contains('hidden'));
+    const isThreadTarget = !!(
+      targetEl?.id === 'thread-input' ||
+      targetEl?.id === 'thread-message-input' ||
+      targetEl?.closest?.('#thread-panel') ||
+      targetEl?.closest?.('.thread-input-area') ||
+      (isThreadOpen && targetEl?.id !== 'message-input' && targetEl?.id !== 'search-input' && !!app._activeThreadParent)
+    );
+
+    // 1. Thread panel composer
+    if (isThreadTarget && (typeof app._queueThreadFiles === 'function' || typeof app._queueThreadFile === 'function')) {
+      if (typeof app._queueThreadFiles === 'function') {
+        app._queueThreadFiles(files);
+      } else {
+        for (const f of files) app._queueThreadFile(f);
+      }
+      const thInput = document.getElementById('thread-input') || document.getElementById('thread-message-input');
+      if (thInput) { try { thInput.focus(); } catch (_) {} }
+      return true;
+    }
+
+    // 2. DM PiP composer
+    const pipContainer = targetEl?.closest?.('#dm-pip-container') || targetEl?.closest?.('#dm-pip-panel');
+    if (pipContainer) {
+      const code = pipContainer.dataset?.channelCode;
+      if (code && typeof app._queueImageForPiP === 'function') {
+        for (const f of files) {
+          if (f.type && f.type.startsWith('image/')) {
+            app._queueImageForPiP(f, code);
+          } else if (typeof app._uploadGeneralFile === 'function') {
+            app._uploadGeneralFile(f, code);
+          }
+        }
+        return true;
+      }
+    }
+
+    // 3. Forum post modal
+    const forumModal = targetEl?.closest?.('.forum-post-modal');
+    if (forumModal && typeof app._forumUploadIntoBody === 'function') {
+      const bodyInput = forumModal.querySelector('#forum-post-body');
+      const code = app.currentChannel;
+      if (bodyInput && code) {
+        app._forumUploadIntoBody(files, bodyInput, code);
+        return true;
+      }
+    }
+
+    // 4. Main chat composer
+    if (typeof app._queueComposerFiles === 'function') {
+      app._queueComposerFiles(files);
+      const input = document.getElementById('message-input');
+      if (input) { try { input.focus(); } catch (_) {} }
+      return true;
+    } else if (typeof app._queueImage === 'function' || typeof app._queueGeneralFile === 'function') {
+      for (const f of files) {
+        if (f.type && f.type.startsWith('image/') && typeof app._queueImage === 'function') {
+          app._queueImage(f);
+        } else if (typeof app._queueGeneralFile === 'function') {
+          app._queueGeneralFile(f);
+        } else if (typeof app._queueImage === 'function') {
+          app._queueImage(f);
+        }
+      }
+      const input = document.getElementById('message-input');
+      if (input) { try { input.focus(); } catch (_) {} }
+      return true;
+    }
+
+    return false;
+  }
+
+  // ── Helper to insert text into input or document ──
+  function insertTextIntoTarget(text, targetEl) {
+    if (!text) return;
+    const threadPanel = document.getElementById('thread-panel');
+    const isThreadOpen = !!(threadPanel && threadPanel.style.display !== 'none' && !threadPanel.classList.contains('hidden'));
+    const threadInput = document.getElementById('thread-input') || document.getElementById('thread-message-input');
+    const mainInput = document.getElementById('message-input');
+
+    let el = targetEl;
+    if (!el || el === document.body || el === document.documentElement) {
+      if (isThreadOpen && threadInput && window.app && window.app._activeThreadParent) {
+        el = threadInput;
+      } else {
+        el = document.activeElement || mainInput;
+      }
+    }
+    if (!el) el = mainInput;
+    if (!el) return;
+
+    if (typeof el.selectionStart === 'number' && typeof el.selectionEnd === 'number') {
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      const val = el.value || '';
+      el.value = val.slice(0, start) + text + val.slice(end);
+      el.selectionStart = el.selectionEnd = start + text.length;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+
+    if (el.isContentEditable) {
+      document.execCommand('insertText', false, text);
+      return;
+    }
+
+    if (mainInput && mainInput !== el) {
+      try { mainInput.focus(); } catch (_) {}
+      insertTextIntoTarget(text, mainInput);
+    }
+  }
+
+  // ── Thread attachment button injection & wiring ──────────
+  function setupThreadUploadControls() {
+    const threadInputArea = document.querySelector('.thread-input-area');
+    if (!threadInputArea) return;
+
+    let uploadBtn = document.getElementById('thread-upload-btn');
+    let fileInput = document.getElementById('thread-file-input');
+
+    if (!fileInput) {
+      fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.id = 'thread-file-input';
+      fileInput.multiple = true;
+      fileInput.style.display = 'none';
+      threadInputArea.appendChild(fileInput);
+    }
+
+    if (!uploadBtn) {
+      uploadBtn = document.createElement('button');
+      uploadBtn.id = 'thread-upload-btn';
+      uploadBtn.className = 'pip-input-emoji-btn';
+      uploadBtn.title = 'Upload File';
+      uploadBtn.type = 'button';
+      uploadBtn.setAttribute('aria-label', 'Upload File');
+      uploadBtn.innerHTML = '<span class="tb-icon tb-icon-emoji" aria-hidden="true">📎</span><span class="tb-icon tb-icon-mono" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>';
+
+      const emojiBtn = threadInputArea.querySelector('#thread-emoji-btn');
+      if (emojiBtn) {
+        threadInputArea.insertBefore(uploadBtn, emojiBtn);
+      } else {
+        const txt = threadInputArea.querySelector('#thread-input');
+        if (txt) threadInputArea.insertBefore(uploadBtn, txt);
+        else threadInputArea.appendChild(uploadBtn);
+      }
+    }
+
+    if (!uploadBtn.__havenWired) {
+      uploadBtn.__havenWired = true;
+      uploadBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const res = await invoke('pick_files_for_upload');
+          if (Array.isArray(res)) {
+            if (res.length > 0) {
+              const files = [];
+              for (const item of res) {
+                if (item && item.dataBase64) {
+                  const bin = atob(item.dataBase64);
+                  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+                  files.push(new File([bytes], item.name, { type: item.mime }));
+                }
+              }
+              if (files.length > 0) {
+                queueFilesIntoActiveHavenComposer(files, document.getElementById('thread-input'));
+              }
+            }
+            return;
+          }
+        } catch (_) {}
+        const fi = document.getElementById('thread-file-input');
+        if (fi) fi.click();
+      });
+    }
+
+    if (fileInput && !fileInput.__havenWired) {
+      fileInput.__havenWired = true;
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files && fileInput.files.length) {
+          const files = Array.from(fileInput.files);
+          queueFilesIntoActiveHavenComposer(files, document.getElementById('thread-input'));
+          fileInput.value = '';
+        }
+      });
+    }
+  }
+
+  // Hook into DOM to ensure thread upload button is present
+  try {
+    const threadBtnObserver = new MutationObserver(() => {
+      setupThreadUploadControls();
+    });
+    const rootEl = document.documentElement || document;
+    threadBtnObserver.observe(rootEl, { childList: true, subtree: true });
+  } catch (_) {}
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupThreadUploadControls);
+  } else {
+    setupThreadUploadControls();
+  }
+  window.addEventListener('load', setupThreadUploadControls);
+  window.addEventListener('click', (e) => {
+    if (e.target?.closest?.('#thread-panel, .thread-btn, [data-thread-id]')) {
+      setTimeout(setupThreadUploadControls, 50);
+    }
+  }, true);
+
+  // ── Paste rescue for WebKitGTK (Files & Pictures) ─────────
+  // 1. Files copied in Linux file managers (Nautilus, Dolphin, Thunar) reach
+  //    WebKitGTK with text/uri-list: file:///path/to/archive.zip and no items of
+  //    kind 'file'. Read the file bytes via the desktop host and queue them
+  //    directly into the Haven composer.
+  // 2. Bitmaps copied to clipboard (WebKit bug 218519, screenshot tools, Win+V / Klipper)
+  //    reach WebKitGTK with an empty or non-file DataTransfer, sometimes accompanied
+  //    by a suggested filename (e.g. Screenshot_...png) or dimensions as plain text.
+  //    Read the picture via clipboard_read_image and queue it directly into the Haven composer.
   (function () {
     if (detectPlatform() !== 'linux') return;
     let busy = false;
-    document.addEventListener('paste', (e) => {
+    document.addEventListener('paste', async (e) => {
       if (e.__havenReplay || busy) return;
       const dt = e.clipboardData;
-      const hasFile = !!dt && Array.from(dt.items || []).some((i) => i.kind === 'file');
-      const plain = dt ? (dt.getData('text/plain') || '') : '';
-      if (hasFile || plain.trim()) return;
-      const markupOnly = !!dt && (dt.types || []).length > 0;
-      if (markupOnly) e.preventDefault();
-      const warn = (m) => { try { window.app && window.app._showToast && window.app._showToast(m, 'error'); } catch (x) {} };
+      if (!dt) return;
+
       const target = e.target;
+      const items = Array.from(dt.items || []);
+      const realFiles = items
+        .filter((i) => i.kind === 'file' && typeof i.getAsFile === 'function')
+        .map(i => i.getAsFile())
+        .filter(Boolean);
+
+      // 1. If WebKit already gave us real File objects, route directly into active composer
+      if (realFiles.length > 0) {
+        e.preventDefault();
+        queueFilesIntoActiveHavenComposer(realFiles, target);
+        return;
+      }
+
+      const uriList = dt.getData('text/uri-list') || '';
+      const plain = (dt.getData('text/plain') || '').trim();
+      const types = Array.from(dt.types || []);
+
+      // Check if clipboard contains file URIs or local file paths from DOM DataTransfer
+      let candidateUris = [];
+      if (uriList) {
+        candidateUris = uriList.split(/[\r\n]+/).map(s => s.trim()).filter(s => s && !s.startsWith('#'));
+      } else if (plain.startsWith('file://')) {
+        candidateUris = plain.split(/[\r\n]+/).map(s => s.trim()).filter(s => s.startsWith('file://'));
+      } else if (plain.startsWith('/') && !plain.includes('\n') && /\.[a-zA-Z0-9]+$/.test(plain)) {
+        candidateUris = [plain];
+      }
+
+      // Check whether this paste is a candidate for image/file rescue vs normal plain text
+      const isCandidate =
+        candidateUris.length > 0 ||
+        plain === '' ||
+        !types.includes('text/plain') ||
+        /\.(png|jpe?g|webp|gif|bmp|svg|avif|ico|tiff|zip|tar|gz|7z|rar|pdf|mp3|wav|ogg|mp4|webm|mkv)$/i.test(plain) ||
+        /^Screenshot_|^screenshot_/i.test(plain) ||
+        /^[\u25ae\u25a0]|\s*\[image/i.test(plain);
+
+      // If it's pure normal text (e.g. typing a message, pasting a sentence), let native text paste happen
+      if (!isCandidate) return;
+
+      // Prevent WebKit from dumping file URIs or screenshot filenames into the input synchronously
+      e.preventDefault();
+
       busy = true;
       const guard = setTimeout(() => { busy = false; }, 10000);
-      invoke('clipboard_read_image').then(async (res) => {
-        if (!res || !res.ok || !res.dataUrl) { markupOnly && warn("Couldn't paste the picture: " + ((res && res.reason) || 'no picture on the clipboard')); return console.warn('[haven] clipboard image unavailable:', res && res.reason); }
-        const bin = atob(res.dataUrl.slice(res.dataUrl.indexOf(',') + 1));
-        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-        const file = new File([bytes], 'pasted-image.png', { type: 'image/png' });
-        const replay = new DataTransfer();
-        replay.items.add(file);
-        const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: replay });
-        ev.__havenReplay = true;
-        (target || document.activeElement || document.body).dispatchEvent(ev);
-      }).catch((err) => { warn("Couldn't paste the picture: " + err); console.warn('[haven] paste rescue failed:', err); }).finally(() => { clearTimeout(guard); busy = false; });
+
+      try {
+        const files = [];
+
+        // 1. If DOM gave us candidate URIs, try reading them via host command
+        if (candidateUris.length > 0) {
+          for (const uri of candidateUris) {
+            try {
+              const res = await invoke('read_file_for_upload', { path: uri });
+              if (res && res.ok && res.dataBase64) {
+                const bin = atob(res.dataBase64);
+                const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+                files.push(new File([bytes], res.name, { type: res.mime }));
+              }
+            } catch (err) {
+              console.warn('[haven-desktop] failed to read file for upload:', uri, err);
+            }
+          }
+        }
+
+        // 2. If no files retrieved from URIs, check if clipboard has a bitmap image
+        // (WebKitGTK bug 218519, Spectacle, Flameshot, Klipper/Win+V screenshots)
+        if (files.length === 0) {
+          try {
+            const res = await invoke('clipboard_read_image');
+            if (res && res.ok && res.dataUrl) {
+              const mime = res.mime || 'image/png';
+              const bin = atob(res.dataUrl.slice(res.dataUrl.indexOf(',') + 1));
+              const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+              let filename = res.filename;
+              if (!filename) {
+                if (/\.(png|jpe?g|webp|gif|bmp|svg|avif)$/i.test(plain) && !plain.includes('\n')) {
+                  filename = plain.split(/[\/\\]/).pop();
+                } else {
+                  const ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : mime === 'image/gif' ? 'gif' : 'png';
+                  filename = 'pasted-image.' + ext;
+                }
+              }
+              files.push(new File([bytes], filename, { type: mime }));
+            }
+          } catch (err) {
+            console.warn('[haven-desktop] clipboard_read_image failed:', err);
+          }
+        }
+
+        // 3. If still no files, query native clipboard for copied files
+        // (WebKitGTK blocks file access and text/uri-list from DOM DataTransfer during paste events)
+        if (files.length === 0) {
+          try {
+            const res = await invoke('clipboard_read_files');
+            if (res && res.ok && Array.isArray(res.files) && res.files.length > 0) {
+              for (const item of res.files) {
+                if (item && item.dataBase64) {
+                  const bin = atob(item.dataBase64);
+                  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+                  files.push(new File([bytes], item.name, { type: item.mime }));
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('[haven-desktop] clipboard_read_files failed:', err);
+          }
+        }
+
+        // 4. If files or screenshot were found, queue them directly into Haven
+        if (files.length > 0) {
+          const queued = queueFilesIntoActiveHavenComposer(files, target);
+          if (!queued) {
+            const replay = new DataTransfer();
+            for (const f of files) replay.items.add(f);
+            const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: replay });
+            ev.__havenReplay = true;
+            (target || document.activeElement || document.getElementById('message-input') || document.body).dispatchEvent(ev);
+          }
+          return;
+        }
+
+        // 5. Fallback: if candidate check triggered but no file/image was found, insert plain text if present
+        if (plain) {
+          insertTextIntoTarget(plain, target);
+        }
+      } catch (err) {
+        console.warn('[haven-desktop] paste rescue failed:', err);
+        if (plain) {
+          insertTextIntoTarget(plain, target);
+        }
+      } finally {
+        clearTimeout(guard);
+        busy = false;
+      }
     }, true);
   })();
+
+  // ── Drag & drop rescue for WebKitGTK ───────────────────────
+  // Route any files dropped anywhere on the window (composer, chat history, or
+  // background) into Haven's queueFilesIntoActiveHavenComposer and prevent WebKit
+  // from navigating to the file URI or inserting text.
+  window.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+      document.getElementById('message-area')?.classList.add('drag-over');
+    }
+  }, true);
+
+  window.addEventListener('dragleave', (e) => {
+    if (!e.relatedTarget) {
+      document.getElementById('message-area')?.classList.remove('drag-over');
+    }
+  }, true);
+
+  window.addEventListener('drop', (e) => {
+    if (e.dataTransfer?.files?.length) {
+      if (e.target && e.target.closest && e.target.closest('#forum-new-modal, #dm-pip-panel, #import-dropzone')) {
+        return;
+      }
+      e.preventDefault();
+      document.getElementById('message-area')?.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer.files);
+      queueFilesIntoActiveHavenComposer(files, e.target);
+    }
+  }, true);
 
   // ── Voice shortcut events ────────────────────────────────
   function clickVoice(id) {
@@ -854,12 +1687,14 @@
       }
     }).catch(() => {});
 
-    if (!document.querySelector('.auth-page') || !document.querySelector('.auth-container')) return;
-
-    const switchBtn = document.createElement('button');
-    switchBtn.id = 'haven-switch-server-btn';
-    switchBtn.textContent = '⬡ Switch Server';
-    document.body.appendChild(switchBtn);
+    const hasAuth = !!(document.querySelector('.auth-page') || document.querySelector('.auth-container'));
+    let switchBtn = null;
+    if (hasAuth) {
+      switchBtn = document.createElement('button');
+      switchBtn.id = 'haven-switch-server-btn';
+      switchBtn.textContent = '⬡ Switch Server';
+      document.body.appendChild(switchBtn);
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'haven-server-picker-overlay';
@@ -876,7 +1711,10 @@
           <div class="hsp-divider-label">Recent Servers</div>
           <div id="hsp-recent-list"></div>
         </div>
-        <button id="hsp-cancel-btn" class="hsp-cancel">Cancel</button>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+          <button id="hsp-cancel-btn" class="hsp-cancel" style="margin-top:0;flex:1">Cancel</button>
+          <button id="hsp-welcome-btn" class="hsp-cancel" style="margin-top:0;flex:1">Welcome Screen</button>
+        </div>
       </div>`;
     document.body.appendChild(overlay);
 
@@ -930,14 +1768,28 @@
       });
     }
 
-    switchBtn.onclick = async () => {
+    const openPicker = async () => {
       overlay.style.display = 'flex';
       urlInput.value = '';
       errorEl.style.display = 'none';
       urlInput.focus();
       await loadRecentServers();
     };
+
+    if (switchBtn) switchBtn.onclick = openPicker;
+
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'S' || e.key === 's')) {
+        e.preventDefault();
+        openPicker();
+      }
+    });
+
     document.getElementById('hsp-cancel-btn').onclick = () => { overlay.style.display = 'none'; };
+    document.getElementById('hsp-welcome-btn').onclick = () => {
+      overlay.style.display = 'none';
+      invoke('nav_back_to_welcome').catch(() => {});
+    };
     overlay.onclick = (e) => { if (e.target === overlay) overlay.style.display = 'none'; };
     urlInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !connectBtn.disabled) connectBtn.click();

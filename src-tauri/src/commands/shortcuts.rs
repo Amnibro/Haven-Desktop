@@ -72,7 +72,7 @@ pub fn shortcuts_register(app: AppHandle, updates: Value) -> Result<Value, Strin
             Err(_) => {
                 result.insert(
                     key.into(),
-                    json!({ "ok": false, "reason": "conflict", "accel": accel }),
+                    json!({ "ok": false, "reason": "unsupported", "accel": accel }),
                 );
             }
         }

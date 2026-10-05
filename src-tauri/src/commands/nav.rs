@@ -1,9 +1,13 @@
 use crate::state::{self, AppState};
 use serde_json::json;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use url::Url;
 
 const INJECT_SCRIPT: &str = include_str!("../../inject/app-bridge.js");
+const POPUP_CLOSE_TITLE: &str = "\u{2063}haven-popup-close";
+const POPUP_CLOSE_SCRIPT: &str = "(()=>{const c=window.close.bind(window);window.close=function(){if(window.top===window)document.title='\\u2063haven-popup-close';c();};})();";
 
 /// Haven servers ship a self-signed certificate by default. The Electron app
 /// accepted every certificate (certificate-error + setCertificateVerifyProc);
@@ -43,6 +47,7 @@ pub fn accept_self_signed(window: &tauri::WebviewWindow) {
             if let Some(settings) = w.inner().settings() {
                 settings.set_enable_webrtc(true);
                 settings.set_enable_media_stream(true);
+                settings.set_javascript_can_open_windows_automatically(true);
             }
             attach_script_dialogs(&w.inner());
         });
@@ -138,11 +143,15 @@ pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
         .iter()
         .filter_map(|h| h.get("url").and_then(|u| u.as_str()).map(String::from))
         .collect();
+    static SIGN_IN: AtomicBool = AtomicBool::new(false);
     if active.as_deref().map(|a| same_origin(url, a)).unwrap_or(false)
         || known.iter().any(|k| same_origin(url, k))
         || history.iter().any(|k| same_origin(url, k))
-        || EMBED_ORIGINS.iter().any(|e| same_origin(url, e))
     {
+        SIGN_IN.store(url.path().starts_with("/api/auth/oidc/start"), Ordering::Relaxed);
+        return true;
+    }
+    if EMBED_ORIGINS.iter().any(|e| same_origin(url, e)) || (SIGN_IN.load(Ordering::Relaxed) && matches!(url.scheme(), "http" | "https")) {
         return true;
     }
     if url.scheme() == "http" || url.scheme() == "https" {
@@ -238,30 +247,106 @@ fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String
     let bounds = state::get_value(app, "windowBounds")?;
     let width = bounds.get("width").and_then(|v| v.as_u64()).unwrap_or(1200) as f64;
     let height = bounds.get("height").and_then(|v| v.as_u64()).unwrap_or(800) as f64;
+
+    // Respect screen dimensions so the window does not overflow below taskbars / docks on launch.
+    let (max_w, max_h) = if let Ok(Some(monitor)) = app.primary_monitor() {
+        let scale = monitor.scale_factor();
+        let size = monitor.size();
+        let screen_w = size.width as f64 / scale;
+        let screen_h = size.height as f64 / scale;
+        // Leave room for taskbar/dock, titlebar, and margins (at least 90px vertically, 60px horizontally).
+        (
+            (screen_w * 0.95).min(screen_w - 60.0).max(640.0),
+            (screen_h * 0.88).min(screen_h - 90.0).max(480.0),
+        )
+    } else {
+        (1200.0, 720.0)
+    };
+    let min_w = 720.0_f64.min(max_w);
+    let min_h = 480.0_f64.min(max_h);
+    let width = width.min(max_w).max(min_w);
+    let height = height.min(max_h).max(min_h);
+
     let guard = app.clone();
     let load_guard = app.clone();
+    let popup_app = app.clone();
+    let download_app = app.clone();
     let builder = WebviewWindowBuilder::new(app, "main", initial)
         .title("Haven")
         .inner_size(width, height)
-        .min_inner_size(800.0, 600.0)
+        .min_inner_size(min_w, min_h)
+        .center()
+        .disable_drag_drop_handler()
         .initialization_script(INJECT_SCRIPT)
         .on_navigation(move |url| allow_navigation(&guard, url))
         .on_page_load(move |_window, payload| {
             crate::nav_fail::on_page_load(&load_guard, &payload);
         })
+        .on_new_window(move |url, _| open_popup(&popup_app, url))
         .theme(Some(tauri::Theme::Dark))
         .background_color(tauri::webview::Color(13, 13, 26, 255))
         .focused(true);
     #[cfg(windows)]
     let builder = builder.additional_browser_args(BROWSER_ARGS);
+    #[cfg(target_os = "linux")]
+    let builder = builder.on_download(move |_, event| on_download(&download_app, event));
+    #[cfg(not(target_os = "linux"))]
+    let _ = download_app;
     let main = builder.build().map_err(|e| e.to_string())?;
+    let _ = main.center();
     accept_self_signed(&main);
+    allow_media_permissions(&main);
     crate::nav_fail::attach_fail_watch(&main, app.clone());
     let (bg, fg) = crate::theme_icon::stored(app);
     crate::theme_icon::apply(app, bg, fg);
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn on_download(app: &AppHandle, event: tauri::webview::DownloadEvent<'_>) -> bool {
+    use tauri_plugin_notification::NotificationExt;
+    if let tauri::webview::DownloadEvent::Finished { path, success, .. } = event {
+        let body = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let _ = app.notification().builder().title(state::t(app, if success { "download.saved" } else { "download.failed" })).body(body).show();
+    }
+    true
+}
+fn allow_media_permissions(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    let _ = window.with_webview(|w| {
+        use gtk::glib::prelude::*;
+        use webkit2gtk::{PermissionRequestExt, WebViewExt};
+        w.inner().connect_permission_request(|_, request| {
+            let geo = request.is::<webkit2gtk::GeolocationPermissionRequest>();
+            let _ = if geo { request.deny() } else { request.allow() };
+            true
+        });
+    });
+    #[cfg(not(target_os = "linux"))]
+    let _ = window;
+}
+fn open_popup(app: &AppHandle, url: Url) -> NewWindowResponse<tauri::Wry> {
+    static SEQ: AtomicU32 = AtomicU32::new(0);
+    if !matches!(url.scheme(), "http" | "https") {
+        return NewWindowResponse::Deny;
+    }
+    let label = format!("popup-{}", SEQ.fetch_add(1, Ordering::Relaxed));
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
+        .title("Haven")
+        .inner_size(820.0, 760.0)
+        .center()
+        .focused(true)
+        .theme(Some(tauri::Theme::Dark))
+        .background_color(tauri::webview::Color(13, 13, 26, 255))
+        .initialization_script(POPUP_CLOSE_SCRIPT)
+        .on_document_title_changed(|w, title| {
+            let _ = if title == POPUP_CLOSE_TITLE { w.destroy() } else { w.set_title(if title.is_empty() { "Haven" } else { &title }) };
+        });
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(BROWSER_ARGS);
+    let _ = builder.build().map(|w| accept_self_signed(&w));
+    NewWindowResponse::Deny
+}
 fn handle_error_nav(app: &AppHandle, action: &str) {
     let app = app.clone();
     let action = action.to_string();
@@ -303,6 +388,7 @@ fn create_welcome_window(app: &AppHandle) -> Result<(), String> {
         .min_inner_size(620.0, 480.0)
         .resizable(false)
         .decorations(false)
+        .disable_drag_drop_handler()
         .center()
         .visible(true)
         .background_color(tauri::webview::Color(13, 13, 26, 255));
@@ -327,9 +413,9 @@ fn show_welcome(app: &AppHandle) -> Result<(), String> {
 fn go_back_to_welcome(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     *state.active_server_url.lock() = None;
-    *state.returning_to_welcome.lock() = true;
     show_welcome(app)?;
     if let Some(main) = app.get_webview_window("main") {
+        *state.returning_to_welcome.lock() = true;
         let _ = main.close();
     }
     Ok(())

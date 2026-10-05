@@ -3,6 +3,8 @@ use serde::Deserialize;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
+#[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,10 +15,36 @@ pub struct NotifyOpts {
     pub channel_code: Option<String>,
 }
 
+#[cfg(target_os = "linux")]
+static WAITING: AtomicUsize = AtomicUsize::new(0);
+#[cfg(target_os = "linux")]
+fn open_from_notification(app: &AppHandle, channel_code: Option<&str>) {
+    let Some(main) = app.get_webview_window("main") else { return };
+    let _ = main.show();
+    let _ = main.unminimize();
+    let _ = main.set_focus();
+    let _ = channel_code.map(|c| app.emit_to("main", "notification-clicked", c));
+}
 #[tauri::command]
 pub fn notify(app: AppHandle, opts: NotifyOpts) -> Result<bool, String> {
     let title = opts.title.unwrap_or_else(|| "Haven".into());
     let body = opts.body.unwrap_or_default();
+    #[cfg(target_os = "linux")]
+    if WAITING.load(Ordering::Relaxed) < 8 {
+        let mut n = notify_rust::Notification::new();
+        n.summary(&title).body(&body).auto_icon().action("default", "Open");
+        let _ = opts.silent.unwrap_or(false).then(|| n.hint(notify_rust::Hint::SuppressSound(true)));
+        let handle = n.show().map_err(|e| e.to_string())?;
+        let code = opts.channel_code.clone();
+        WAITING.fetch_add(1, Ordering::Relaxed);
+        std::thread::spawn(move || {
+            handle.wait_for_action(|action| {
+                let _ = (action == "default").then(|| open_from_notification(&app, code.as_deref()));
+            });
+            WAITING.fetch_sub(1, Ordering::Relaxed);
+        });
+        return Ok(true);
+    }
     let mut builder = app.notification().builder().title(title).body(body);
     if opts.silent.unwrap_or(false) {
         builder = builder.silent();

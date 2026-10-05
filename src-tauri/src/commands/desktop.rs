@@ -16,10 +16,32 @@ pub fn desktop_get_prefs(app: AppHandle) -> Result<serde_json::Value, String> {
     }))
 }
 
+#[cfg(target_os = "linux")]
+pub fn set_autostart(_app: &AppHandle, enabled: bool, only_create: bool) -> Result<(), String> {
+    let file = dirs::config_dir().ok_or("no config dir")?.join("autostart").join("haven-desktop.desktop");
+    if only_create && (!enabled || file.exists()) {
+        return Ok(());
+    }
+    if !enabled {
+        return std::fs::remove_file(&file).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }).map_err(|e| e.to_string());
+    }
+    let exe = std::env::var_os("APPIMAGE").map(std::path::PathBuf::from).or_else(|| which::which("haven-desktop").ok()).or_else(|| std::env::current_exe().ok()).ok_or("no executable")?;
+    std::fs::create_dir_all(file.parent().ok_or("no autostart dir")?).map_err(|e| e.to_string())?;
+    std::fs::write(&file, format!("[Desktop Entry]\nType=Application\nName=Haven\nComment=Start Haven when you log in\nExec=\"{}\" --hidden\nIcon=haven-desktop\nTerminal=false\nX-GNOME-Autostart-enabled=true\nX-KDE-autostart-after=panel\n", exe.display())).map_err(|e| e.to_string())
+}
+#[cfg(not(target_os = "linux"))]
+pub fn set_autostart(app: &AppHandle, enabled: bool, only_create: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if only_create && (!enabled || launcher.is_enabled().unwrap_or(false)) {
+        return Ok(());
+    }
+    if enabled { launcher.enable() } else { launcher.disable() }.map_err(|e| e.to_string())
+}
 #[tauri::command]
 pub fn desktop_set_start_on_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    set_autostart(&app, enabled, false)?;
     state::set_value(&app, "startOnLogin", json!(enabled))?;
-    // Autostart is platform-specific; persist preference for now.
     Ok(true)
 }
 

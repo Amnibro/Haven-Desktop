@@ -60,6 +60,8 @@ const EN: &[(&str, &str)] = &[
     ("server.log.restarting", "Server exited with code {code}; restarting..."),
     ("dialog.selectServerDirectory", "Select Haven server directory"),
     ("dialog.saveImage", "Save image"),
+    ("download.saved", "Download saved"),
+    ("download.failed", "Download failed"),
     ("dialog.ok", "OK"),
     ("dialog.cancel", "Cancel"),
     ("dialog.defaultValue", "Default: {value}"),

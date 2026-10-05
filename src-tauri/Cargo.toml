@@ -1,6 +1,6 @@
 [package]
 name = "haven-desktop"
-version = "2.5.3"
+version = "2.5.5"
 description = "Haven Desktop — Private chat client (Tauri)"
 authors = ["Haven Contributors"]
 edition = "2021"
@@ -51,7 +51,9 @@ windows-core = "0.61"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "=2.5.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
 gtk = "0.18"
+notify-rust = "4"

@@ -63,6 +63,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::i18n_get_state,
@@ -109,7 +110,10 @@ pub fn run() {
             commands::clipboard_write_text,
             commands::clipboard_write_image,
             commands::clipboard_read_image,
+            commands::clipboard_read_files,
             commands::save_image,
+            commands::read_file_for_upload,
+            commands::pick_files_for_upload,
             commands::audio_is_supported,
             commands::audio_get_apps,
             commands::audio_start_capture,
@@ -139,6 +143,8 @@ pub fn run() {
             }
 
             // Welcome starts hidden so skipWelcome never flashes Host / Join.
+            let hidden = std::env::args().any(|a| a == "--hidden") && state::get_bool(app.handle(), "startHidden").unwrap_or(false);
+            let _ = state::get_bool(app.handle(), "startOnLogin").map(|on| commands::set_autostart(app.handle(), on, true));
             let prefs = state::get_user_prefs(app.handle())?;
             let skip = prefs
                 .get("skipWelcome")
@@ -159,13 +165,15 @@ pub fn run() {
                                 let _ = welcome.show();
                                 let _ = welcome.set_focus();
                             }
+                        } else if hidden {
+                            let _ = handle.get_webview_window("main").map(|m| m.hide());
                         }
                     });
                 } else if let Some(welcome) = app.get_webview_window("welcome") {
                     let _ = welcome.show();
                     let _ = welcome.set_focus();
                 }
-            } else if let Some(welcome) = app.get_webview_window("welcome") {
+            } else if let Some(welcome) = app.get_webview_window("welcome").filter(|_| !hidden) {
                 let _ = welcome.show();
                 let _ = welcome.set_focus();
             }
@@ -179,12 +187,8 @@ pub fn run() {
                 if let tauri::WindowEvent::Resized(_) = event {
                     if let (Ok(size), Ok(scale)) = (window.inner_size(), window.scale_factor()) {
                         let (w, h) = ((size.width as f64 / scale) as u64, (size.height as f64 / scale) as u64);
-                        if w >= 800 && h >= 600 && !window.is_maximized().unwrap_or(false) {
-                            let _ = state::set_value(
-                                window.app_handle(),
-                                "windowBounds",
-                                serde_json::json!({ "width": w, "height": h }),
-                            );
+                        if w >= 640 && h >= 480 && !window.is_maximized().unwrap_or(false) {
+                            let _ = state::store(window.app_handle()).map(|s| s.set("windowBounds", serde_json::json!({ "width": w, "height": h })));
                         }
                     }
                 }

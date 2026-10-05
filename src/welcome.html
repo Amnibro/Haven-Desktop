@@ -104,6 +104,11 @@
       <p class="hint" data-i18n="welcome.serverAddressHint">Enter the URL or IP address of the Haven server you'd like to join.</p>
       <button class="btn primary" id="btn-connect" data-i18n="welcome.connect" disabled>Connect</button>
       <p class="error-text" id="join-error" style="display:none"></p>
+
+      <div id="join-recent-section" class="join-recent-section" style="display:none; width: 100%; margin-top: 16px;">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 8px;">Saved & Recent Servers</div>
+        <div id="join-recent-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto;"></div>
+      </div>
     </div>
   </section>
 
