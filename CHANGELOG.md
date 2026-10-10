@@ -2,6 +2,11 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## Unreleased
+
+- **Arch Linux package.** `haven-chat-bin` on the AUR installs the release deb through pacman (`yay -S haven-chat-bin`), and CI updates it with each release once the `AUR_SSH_PRIVATE_KEY` secret is set. The packaging lives in `packaging/aur/` ([ancsemi/Haven#5711](https://github.com/ancsemi/Haven/issues/5711)).
+- **No update prompt outside the AppImage on Linux.** The update feed only carries an AppImage, so deb and AUR installs were offered an update on every launch that could not install. Those installs now leave updates to the package manager.
+
 ## v2.5.5-tauri (2026-10-05)
 
 - **Pop-up windows open.** Linking Steam or Spotify under Connections, the single sign-on consent page and game pop-outs called `window.open`, which a Tauri webview silently refused, so Haven reported "allow pop-ups" and nothing happened. Pop-ups now open in their own Haven window, close themselves when the page finishes, and have no access to the desktop bridge.

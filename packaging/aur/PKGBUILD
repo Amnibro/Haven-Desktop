@@ -1,0 +1,36 @@
+# Maintainer: Amnibro <https://github.com/Amnibro>
+#
+# Repackages the .deb that CI attaches to each Haven Desktop release.
+# CI rewrites pkgver, _tag and the checksums on every release; see packaging/aur/README.md.
+
+pkgname=haven-chat-bin
+_pkgname=haven-desktop
+pkgver=2.5.5
+pkgrel=1
+_tag="v${pkgver}-tauri"
+pkgdesc="Haven Desktop: native client for Haven private self-hosted chat (Tauri)"
+arch=('x86_64')
+url="https://github.com/Amnibro/Haven-Desktop"
+license=('AGPL-3.0-only')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'libpulse' 'hicolor-icon-theme')
+provides=('haven-chat')
+conflicts=('haven-chat')
+options=('!strip' '!debug')
+source=("${_pkgname}-${pkgver}.deb::${url}/releases/download/${_tag}/Haven_${pkgver}_amd64.deb"
+        "LICENSE::https://raw.githubusercontent.com/Amnibro/Haven-Desktop/${_tag}/LICENSE")
+noextract=("${_pkgname}-${pkgver}.deb")
+sha256sums=('8a99d0dc85a4bba8d8e94dd03563b057d65b6d007a18e04a4ccc4cc71cb214ac'
+            'a0aef7b01c68c8d5fb13423f77fd6d73fab6d50a08bf473aa9c616bde4cc3434')
+
+package() {
+  bsdtar -xOf "${_pkgname}-${pkgver}.deb" 'data.tar*' | bsdtar -xf - -C "${pkgdir}"
+
+  # Tauri names the 128x128@2x icon directory "256x256@2", which icon themes ignore.
+  if [[ -d "${pkgdir}/usr/share/icons/hicolor/256x256@2" ]]; then
+    install -d "${pkgdir}/usr/share/icons/hicolor/256x256"
+    mv "${pkgdir}/usr/share/icons/hicolor/256x256@2/apps" "${pkgdir}/usr/share/icons/hicolor/256x256/"
+    rmdir "${pkgdir}/usr/share/icons/hicolor/256x256@2"
+  fi
+
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

@@ -88,6 +88,8 @@ CXX=g++ npm run tauri:build
 
 Artifacts land under `src-tauri/target/release/bundle/` (NSIS on Windows; `.deb` / AppImage on Linux).
 
+**Arch Linux (AUR):** `yay -S haven-chat-bin` installs the release deb through pacman. See [packaging/aur/README.md](packaging/aur/README.md) for building it locally and for publishing.
+
 ## Architecture
 
 ```

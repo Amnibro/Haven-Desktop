@@ -15,9 +15,14 @@ use tauri_plugin_store::StoreExt;
 /// Ask the GitHub release feed once at startup; on a newer build, offer to
 /// install it (signed with the key in ~/.tauri, verified against the pubkey
 /// in tauri.conf.json) and relaunch. Failures stay silent: offline is normal.
+/// On Linux only the AppImage can replace itself; deb and AUR installs belong
+/// to the package manager, and the feed only carries an AppImage anyway.
 fn check_for_update(app: tauri::AppHandle) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     use tauri_plugin_updater::UpdaterExt;
+    if cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_none() {
+        return;
+    }
     tauri::async_runtime::spawn(async move {
         let Ok(updater) = app.updater() else { return };
         let Ok(Some(update)) = updater.check().await else { return };
