@@ -115,3 +115,36 @@ jobs:
           mapfile -t FILES < <(find dist -type f \( -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.sig' -o -name 'latest.json' \))
           gh release upload "$TAG" "${FILES[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Released: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+
+  publish-aur:
+    # Pushes packaging/aur to the AUR as haven-chat-bin once the release has its deb.
+    # Skips itself until the AUR_SSH_PRIVATE_KEY secret exists (see packaging/aur/README.md).
+    needs: publish
+    runs-on: ubuntu-latest
+    env:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Point the PKGBUILD at this release
+        id: pkg
+        if: env.AUR_SSH_PRIVATE_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then TAG="${GITHUB_REF_NAME}"; else TAG="v${VERSION}-tauri"; fi
+          sed -i -e "s/^pkgver=.*/pkgver=${VERSION}/" -e "s/^pkgrel=.*/pkgrel=1/" \
+            -e "s/^_tag=.*/_tag=\"${TAG}\"/" packaging/aur/PKGBUILD
+          grep -E '^(pkgver|pkgrel|_tag)=' packaging/aur/PKGBUILD
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        if: env.AUR_SSH_PRIVATE_KEY != ''
+        with:
+          pkgname: haven-chat-bin
+          pkgbuild: packaging/aur/PKGBUILD
+          updpkgsums: true
+          commit_username: ${{ vars.AUR_USERNAME || 'Amnibro' }}
+          commit_email: ${{ vars.AUR_EMAIL || 'Amnibro@users.noreply.github.com' }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ steps.pkg.outputs.version }}"
+          allow_empty_commits: false
