@@ -46,7 +46,20 @@ fn main() {
         println!("cargo:rustc-link-lib=Psapi");
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(target_os = "macos")]
+    {
+        let cxx = std::env::var("CXX").unwrap_or_else(|_| "c++".into());
+        build.compiler(&cxx);
+        build.file("native/src/null_capture.cpp");
+        build.file("native/src/macos/macos_ssl.mm");
+        build.define("PLATFORM_UNSUPPORTED", None);
+        println!("cargo:rustc-link-lib=c++");
+        println!("cargo:rustc-link-lib=framework=WebKit");
+        println!("cargo:rustc-link-lib=framework=AppKit");
+        println!("cargo:rustc-link-lib=framework=Security");
+    }
+
+    #[cfg(all(not(target_os = "linux"), not(target_os = "windows"), not(target_os = "macos")))]
     {
         let cxx = std::env::var("CXX").unwrap_or_else(|_| "c++".into());
         build.compiler(&cxx);

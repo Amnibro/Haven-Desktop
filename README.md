@@ -24,10 +24,11 @@ Haven servers generate a self-signed certificate by default, so the client has t
 | Platform | Self-signed HTTPS | Audio capture | Status |
 |---|---|---|---|
 | Windows | Accepted (`--ignore-certificate-errors` on the WebView2 process, same reach as the Electron app's certificate handler) | WASAPI | Built, installed and tested on Windows 11 |
-| Linux | Accepted (WebKitGTK TLS policy set to ignore on both windows) | PulseAudio | AppImage and deb built by CI from Ubuntu 22.04; the TLS path is untested on a real desktop |
-| macOS | Rejected (wry exposes no WKWebView hook); use a trusted certificate or plain http | none (null capture) | Untested |
+| Linux | Accepted (WebKitGTK TLS policy set to ignore on both windows) | PulseAudio | AppImage and deb built by CI from Ubuntu 22.04 |
+| macOS | Accepted (native WKWebView authentication-challenge hook) | none (null capture) | .app and .dmg built, signed and run on Apple Silicon |
+| Linux (Flatpak) | Same as Linux | PulseAudio | Bundle built by CI on the GNOME runtime; hosting a server needs Node on the host, and updates come from re-downloading the bundle rather than the in-app updater |
 
-Every push builds a signed Windows installer and a signed Linux AppImage plus deb, and publishes them with `latest.json` to the GitHub release. The app checks that feed once at startup and offers to install a newer build. Navigation stays on the connected server and the known embed origins (YouTube, SoundCloud, Spotify, Turnstile); any other link opens in the system browser. A second launch focuses the running window instead of starting another copy. The main window remembers its size.
+Every push builds a signed Windows installer, a signed Linux AppImage plus deb, a Flatpak bundle, and a macOS DMG plus updater archive (Developer ID signed and notarized when the Apple secrets are set on the repo), and publishes them with `latest.json` to the GitHub release. The app checks that feed once at startup and offers to install a newer build. Navigation stays on the connected server and the known embed origins (YouTube, SoundCloud, Spotify, Turnstile); any other link opens in the system browser. A second launch focuses the running window instead of starting another copy. The main window remembers its size.
 
 ## Prerequisites
 
@@ -36,6 +37,7 @@ Every push builds a signed Windows installer and a signed Linux AppImage plus de
 - **C++ toolchain**
   - **Windows:** Visual Studio Build Tools with the “Desktop development with C++” workload (MSVC)
   - **Linux:** `g++`, plus `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `patchelf`, `libpulse-dev`, `pkg-config`
+  - **macOS:** Xcode Command Line Tools (`xcode-select --install`)
 - A running or installable **Haven server** for Join / Host flows
 
 ## Develop
@@ -62,7 +64,17 @@ Windows also needs:
 - [Rust](https://rustup.rs)
 - [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **Desktop development with C++**
 
-### Linux / macOS
+### macOS
+
+Double-click **`Start Haven Desktop.command`** in Finder, or run in Terminal:
+
+```bash
+cd path/to/haven-desktop
+npm install
+npm run tauri:dev
+```
+
+### Linux
 
 ```bash
 cd path/to/haven-desktop
@@ -73,6 +85,16 @@ CXX=g++ npm run tauri:dev
 The welcome window opens on Vite port `14370`. Use **Join a Server** with your Haven URL, or **Host My Server** if you have a local Haven checkout.
 
 ## Build installers
+
+**macOS:**
+
+Double-click **`Build Mac App.command`** in Finder, or run:
+
+```bash
+npm run tauri build -- --bundles app,dmg
+```
+
+Artifacts land under `src-tauri/target/release/bundle/macos/Haven.app` and `src-tauri/target/release/bundle/dmg/*.dmg`.
 
 **Windows:**
 
@@ -86,7 +108,13 @@ npm run tauri:build
 CXX=g++ npm run tauri:build
 ```
 
-Artifacts land under `src-tauri/target/release/bundle/` (NSIS on Windows; `.deb` / AppImage on Linux).
+Artifacts land under `src-tauri/target/release/bundle/` (NSIS on Windows; `.deb` / AppImage on Linux; `.dmg` / `.app` on macOS).
+
+**Flatpak:** CI wraps the deb into a Flatpak with [`flatpak/com.haven.desktop.yml`](flatpak/com.haven.desktop.yml). To build it yourself on Linux, put the deb at `flatpak/haven.deb`, clone `https://github.com/flathub/shared-modules` into `flatpak/shared-modules`, then run:
+
+```bash
+flatpak-builder --user --install --force-clean build-dir flatpak/com.haven.desktop.yml
+```
 
 ## Architecture
 

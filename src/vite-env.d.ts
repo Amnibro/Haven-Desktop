@@ -22,6 +22,7 @@ interface HavenApi {
     browse: () => Promise<string | null>;
     browseFile: () => Promise<string | null>;
     getStatus: () => Promise<unknown>;
+    checkHealth: (serverUrl: string) => Promise<{ reachable: boolean; url: string }>;
     onLog: (cb: (m: string) => void) => void;
   };
   settings: {

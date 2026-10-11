@@ -499,8 +499,46 @@ fn get_linux_clipboard_uris() -> Vec<String> {
     uris
 }
 
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn haven_macos_get_clipboard_files(
+        cb: extern "C" fn(path: *const std::ffi::c_char, user: *mut std::ffi::c_void),
+        user: *mut std::ffi::c_void,
+    );
+}
+
+#[cfg(target_os = "macos")]
+fn get_macos_clipboard_paths() -> Vec<std::path::PathBuf> {
+    extern "C" fn on_file(path: *const std::ffi::c_char, user: *mut std::ffi::c_void) {
+        if path.is_null() || user.is_null() {
+            return;
+        }
+        unsafe {
+            let vec = &mut *(user as *mut Vec<std::path::PathBuf>);
+            let cstr = std::ffi::CStr::from_ptr(path);
+            if let Ok(s) = cstr.to_str() {
+                vec.push(std::path::PathBuf::from(s));
+            }
+        }
+    }
+    let mut paths = Vec::new();
+    unsafe {
+        haven_macos_get_clipboard_files(on_file, &mut paths as *mut _ as *mut std::ffi::c_void);
+    }
+    paths
+}
+
 fn clipboard_paths(app: &AppHandle) -> Vec<std::path::PathBuf> {
     let mut candidate_paths: Vec<std::path::PathBuf> = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        for p in get_macos_clipboard_paths() {
+            if p.is_file() && !candidate_paths.contains(&p) {
+                candidate_paths.push(p);
+            }
+        }
+    }
 
     #[cfg(target_os = "linux")]
     {

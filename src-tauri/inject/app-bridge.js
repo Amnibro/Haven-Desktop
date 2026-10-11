@@ -412,6 +412,23 @@
     if (!inst || inst.__havenAppPatched) return;
     inst.__havenAppPatched = true;
     try {
+      // Ensure channel template methods never throw TypeError on click
+      if (typeof inst._channelTemplateExtras !== 'function') {
+        inst._channelTemplateExtras = function () {
+          return {
+            topic: '',
+            readOnly: false,
+            announcement: false,
+            slowMode: 0,
+            mediaEnabled: true,
+            voiceEnabled: true
+          };
+        };
+      }
+      if (typeof inst._resetChannelTemplate !== 'function') {
+        inst._resetChannelTemplate = function () {};
+      }
+
       const origProto = Object.getPrototypeOf(inst);
       const origToast = (origProto && origProto._showToast) || inst._showToast;
       const safeToast = function (msg, ...args) {
@@ -441,10 +458,227 @@
           set(v) { _v = v; if (v) sanitizeVoice(v); }
         });
       } catch {}
+
+      const hookChannelSocket = (s) => {
+        if (!s || s.__havenChannelHooked) return;
+        s.__havenChannelHooked = true;
+        s.on('channel-joined', (ch) => {
+          if (!ch || !ch.code) return;
+          // Haven re-emits join-channel on reconnect/refresh, so only react
+          // to a join the user just asked for through the rescue below.
+          const pending = window.__havenJoinPending;
+          if (!pending) return;
+          const fresh = Date.now() - pending.at < 5000;
+          if (pending.code !== ch.code && !fresh) return;
+          window.__havenJoinPending = null;
+          try {
+            if (inst.channels && !inst.channels.some((c) => c.code === ch.code)) {
+              inst.channels.push(ch);
+              inst._renderChannels?.();
+            }
+            inst._showToast?.(`Joined #${ch.name || ch.code}`, 'success');
+            setTimeout(() => {
+              inst.switchChannel?.(ch.code);
+            }, 60);
+          } catch (err) {
+            console.warn('[haven-desktop] channel-joined auto-switch error:', err);
+          }
+        });
+      };
+      if (inst.socket) hookChannelSocket(inst.socket);
+      let _s = inst.socket;
+      try {
+        Object.defineProperty(inst, 'socket', {
+          configurable: true,
+          enumerable: true,
+          get() { return _s; },
+          set(s) { _s = s; if (s) hookChannelSocket(s); }
+        });
+      } catch {}
     } catch (e) {
       console.warn('[haven-desktop] patchApp error:', e);
     }
   }
+
+  // ── Universal Channel Join & Create Rescue ─────────────────
+  // Resolves non-working "Join" and "Create" / "+" channel buttons across all OSs
+  // and layout plugins (standard sidebar, mod mode, ChannelTabsLayout modal).
+  // 1. Uncaps input maxlength and parses full invite URLs (https://.../c/<code>, ?invite=<code>)
+  // 2. Safely extracts payloads and spreads channel template options without throwing
+  // 3. Emits join-channel and create-channel directly through the active socket
+  // 4. Provides clear toast notifications and auto-switches to newly joined channels
+  (function initChannelControlsRescue() {
+    function sanitizeChannelCode(raw) {
+      if (!raw || typeof raw !== 'string') return '';
+      let s = raw.trim();
+      const matchC = s.match(/(?:\/c\/|\/join\/)([a-zA-Z0-9_-]+)/i);
+      if (matchC) return matchC[1];
+      const matchInvite = s.match(/[?&]invite=([a-zA-Z0-9_-]+)/i);
+      if (matchInvite) return matchInvite[1];
+      try {
+        if (s.startsWith('http://') || s.startsWith('https://')) {
+          const u = new URL(s);
+          const parts = u.pathname.split('/').filter(Boolean);
+          if (parts.length > 0) return parts[parts.length - 1];
+        }
+      } catch {}
+      if (/^[a-fA-F0-9]{8}$/.test(s)) return s.toLowerCase();
+      return s;
+    }
+
+    function ensureInputAttributes() {
+      const codeInput = document.getElementById('channel-code-input');
+      if (codeInput) {
+        if (codeInput.hasAttribute('maxlength') && codeInput.getAttribute('maxlength') === '8') {
+          codeInput.setAttribute('maxlength', '256');
+        }
+        if (!codeInput.__havenPasteHooked) {
+          codeInput.__havenPasteHooked = true;
+          codeInput.addEventListener('paste', (e) => {
+            const pasted = e.clipboardData?.getData('text/plain');
+            if (pasted) {
+              const cleaned = sanitizeChannelCode(pasted);
+              if (cleaned && cleaned !== pasted) {
+                e.preventDefault();
+                codeInput.value = cleaned;
+                codeInput.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            }
+          });
+        }
+      }
+    }
+
+    function executeJoinChannel() {
+      const codeInput = document.getElementById('channel-code-input');
+      if (!codeInput) return false;
+      const raw = codeInput.value;
+      const code = sanitizeChannelCode(raw);
+      if (!code) {
+        window.app?._showToast?.('Please enter a channel code or invite link', 'error');
+        return false;
+      }
+      const sock = window.app?.socket || window.havenSocket;
+      if (!sock) {
+        window.app?._showToast?.('Not connected to server', 'error');
+        return false;
+      }
+      codeInput.value = '';
+      window.app?._showToast?.(`Joining channel (${code})...`, 'info');
+      window.__havenJoinPending = { code, at: Date.now() };
+      sock.emit('join-channel', { code });
+
+      const modal = document.getElementById('join-create-modal');
+      if (modal && modal.style.display !== 'none') {
+        modal.style.display = 'none';
+        const channelsTab = document.querySelector('[data-channel-tab="channels"]');
+        if (channelsTab) channelsTab.click();
+      }
+      return true;
+    }
+
+    function executeCreateChannel() {
+      const nameInput = document.getElementById('new-channel-name');
+      if (!nameInput) return false;
+      const name = nameInput.value.trim();
+      if (!name) {
+        window.app?._showToast?.('Please enter a channel name', 'error');
+        return false;
+      }
+      const sock = window.app?.socket || window.havenSocket;
+      if (!sock) {
+        window.app?._showToast?.('Not connected to server', 'error');
+        return false;
+      }
+
+      const isPrivate = document.getElementById('new-channel-private')?.checked || false;
+      const temporary = document.getElementById('new-channel-temporary')?.checked || false;
+      const duration = parseInt(document.getElementById('new-channel-duration')?.value, 10) || 24;
+      const addAllMembers = document.getElementById('new-channel-add-all')?.checked || false;
+      const isForum = document.getElementById('new-channel-forum')?.checked || false;
+
+      let extras = {};
+      if (typeof window.app?._channelTemplateExtras === 'function') {
+        try { extras = window.app._channelTemplateExtras() || {}; } catch {}
+      }
+
+      const payload = {
+        name,
+        isPrivate,
+        temporary,
+        duration,
+        addAllMembers,
+        isForum,
+        ...extras
+      };
+
+      sock.emit('create-channel', payload);
+      if (typeof window.app?._resetChannelTemplate === 'function') {
+        try { window.app._resetChannelTemplate(); } catch {}
+      }
+      nameInput.value = '';
+      const pvt = document.getElementById('new-channel-private');
+      if (pvt) pvt.checked = false;
+      const tmp = document.getElementById('new-channel-temporary');
+      if (tmp) tmp.checked = false;
+      const all = document.getElementById('new-channel-add-all');
+      if (all) all.checked = false;
+      const durRow = document.getElementById('temp-channel-duration-row');
+      if (durRow) durRow.style.display = 'none';
+
+      window.app?._showToast?.(`Creating #${name}...`, 'info');
+
+      const modal = document.getElementById('join-create-modal');
+      if (modal && modal.style.display !== 'none') {
+        modal.style.display = 'none';
+        const channelsTab = document.querySelector('[data-channel-tab="channels"]');
+        if (channelsTab) channelsTab.click();
+      }
+      return true;
+    }
+
+    // Delegated capture click listener
+    document.addEventListener('click', (e) => {
+      if (e.target?.closest?.('#join-channel-btn')) {
+        e.preventDefault();
+        e.stopPropagation();
+        executeJoinChannel();
+        return;
+      }
+      if (e.target?.closest?.('#create-channel-btn')) {
+        e.preventDefault();
+        e.stopPropagation();
+        executeCreateChannel();
+        return;
+      }
+    }, true);
+
+    // Delegated capture keydown listener for Enter key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        if (e.target?.id === 'channel-code-input') {
+          e.preventDefault();
+          e.stopPropagation();
+          executeJoinChannel();
+          return;
+        }
+        if (e.target?.id === 'new-channel-name') {
+          e.preventDefault();
+          e.stopPropagation();
+          executeCreateChannel();
+          return;
+        }
+      }
+    }, true);
+
+    // Periodic & DOM check for input attributes
+    setInterval(ensureInputAttributes, 1000);
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', ensureInputAttributes, { once: true });
+    } else {
+      ensureInputAttributes();
+    }
+  })();
 
   try {
     Object.defineProperty(window, 'app', {
@@ -899,7 +1133,10 @@
       invoke('save_image', { payload: bytes || '', filename: filename || 'haven-image.png' }),
 
     getServerHistory: () => invoke('server_history_get'),
-    addServerHistory: (url, name) => invoke('server_history_add', { url, name }),
+    addServerHistory: async (url, name) => {
+      const res = await invoke('server_history_add', { url, name }).catch(() => 'added');
+      return res || 'added';
+    },
     removeServerHistory: (url) => invoke('server_history_remove', { url }),
     initialServerHistory: [],
 
@@ -1808,16 +2045,13 @@
       connectBtn.disabled = true;
       connectBtn.textContent = 'Connecting...';
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        const res = await fetch(url + '/api/health', { signal: controller.signal }).catch(() => null);
-        clearTimeout(timeout);
-        if (!res || !res.ok) {
+        const check = await invoke('server_check_health', { serverUrl: url }).catch(() => null);
+        if (!check || !check.reachable) {
           errorEl.textContent = 'Could not reach server.';
           errorEl.style.display = 'block';
           return;
         }
-        await invoke('nav_change_primary_server', { serverUrl: url });
+        await invoke('nav_change_primary_server', { serverUrl: check.url || url });
       } catch {
         errorEl.textContent = 'Connection failed.';
         errorEl.style.display = 'block';

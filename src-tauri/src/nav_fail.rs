@@ -11,6 +11,10 @@ use url::Url;
 
 /// Cheap reachability check so a dead host never becomes Edge's error page.
 pub fn server_tcp_reachable(server_url: &str) -> bool {
+    server_tcp_reachable_with_timeout(server_url, 3000)
+}
+
+pub fn server_tcp_reachable_with_timeout(server_url: &str, timeout_ms: u64) -> bool {
     let Ok(parsed) = Url::parse(server_url) else {
         return false;
     };
@@ -20,11 +24,16 @@ pub fn server_tcp_reachable(server_url: &str) -> bool {
     let Some(port) = parsed.port_or_known_default() else {
         return false;
     };
-    let Ok(mut addrs) = (host, port).to_socket_addrs() else {
+    let Ok(addrs) = (host, port).to_socket_addrs() else {
         return false;
     };
-    let timeout = Duration::from_millis(1500);
-    addrs.any(|addr| TcpStream::connect_timeout(&addr, timeout).is_ok())
+    let timeout = Duration::from_millis(timeout_ms);
+    for addr in addrs {
+        if TcpStream::connect_timeout(&addr, timeout).is_ok() {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn is_desktop_asset_url(url: &Url) -> bool {

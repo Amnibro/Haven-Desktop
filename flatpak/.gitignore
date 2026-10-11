@@ -1,0 +1,4 @@
+haven.deb
+shared-modules/
+.flatpak-builder/
+build-dir/

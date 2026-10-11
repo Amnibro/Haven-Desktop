@@ -27,10 +27,15 @@ const EMBED_ORIGINS: [&str; 5] = [
     "https://challenges.cloudflare.com",
 ];
 
-/// Linux counterpart of `--ignore-certificate-errors`: WebKitGTK rejects
-/// self-signed certificates unless the web context's TLS policy says otherwise.
-/// macOS (WKWebView) has no equivalent hook in wry; a self-signed server there
-/// needs a trusted cert or plain http.
+// Linux counterpart of `--ignore-certificate-errors`: WebKitGTK rejects
+// self-signed certificates unless the web context's TLS policy says otherwise.
+// On macOS, our Objective-C runtime swizzling in native/src/macos/macos_ssl.mm
+// handles self-signed server certificates seamlessly.
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn haven_macos_accept_self_signed(webview: *mut std::ffi::c_void);
+}
+
 pub fn accept_self_signed(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "linux")]
     {
@@ -52,7 +57,16 @@ pub fn accept_self_signed(window: &tauri::WebviewWindow) {
             attach_script_dialogs(&w.inner());
         });
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window.with_webview(|w| {
+            let inner = w.inner();
+            unsafe {
+                haven_macos_accept_self_signed(inner);
+            }
+        });
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     let _ = window;
 }
 

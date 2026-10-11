@@ -16,16 +16,16 @@ pub fn server_history_get(app: AppHandle) -> Result<Vec<Value>, String> {
 }
 
 #[tauri::command]
-pub fn server_history_add(app: AppHandle, url: String, name: Option<String>) -> Result<(), String> {
+pub fn server_history_add(app: AppHandle, url: String, name: Option<String>) -> Result<String, String> {
     let Some(normalized) = state::normalize_server_url(&url) else {
-        return Ok(());
+        return Ok("invalid".into());
     };
     let mut history = server_history_get(app.clone())?;
     if history
         .iter()
         .any(|h| h.get("url").and_then(|u| u.as_str()) == Some(normalized.as_str()))
     {
-        return Ok(());
+        return Ok("exists".into());
     }
     history.push(json!({
         "url": normalized.clone(),
@@ -35,7 +35,8 @@ pub fn server_history_add(app: AppHandle, url: String, name: Option<String>) -> 
     while history.len() > 20 {
         history.remove(0);
     }
-    state::set_value(&app, "serverHistory", json!(history))
+    state::set_value(&app, "serverHistory", json!(history))?;
+    Ok("added".into())
 }
 
 #[tauri::command]

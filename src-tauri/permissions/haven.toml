@@ -10,6 +10,7 @@ commands.allow = [
   "server_stop",
   "server_status",
   "server_browse",
+  "server_check_health",
   "settings_get",
   "settings_set",
   "app_version",

@@ -73,3 +73,56 @@ pub async fn server_browse(app: AppHandle) -> Result<Option<String>, String> {
     .map_err(|e| e.to_string())?;
     Ok(folder.map(|p| p.to_string()))
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct HealthCheckResult {
+    pub reachable: bool,
+    pub url: String,
+}
+
+#[tauri::command]
+pub async fn server_check_health(server_url: String) -> Result<HealthCheckResult, String> {
+    let target = server_url.trim().to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let normalized = if !target.starts_with("http://") && !target.starts_with("https://") {
+            format!("https://{target}")
+        } else {
+            target
+        };
+
+        // Try the normalized URL first
+        if crate::nav_fail::server_tcp_reachable_with_timeout(&normalized, 3500) {
+            return HealthCheckResult {
+                reachable: true,
+                url: normalized,
+            };
+        }
+
+        // If https:// failed, try http:// as fallback
+        if normalized.starts_with("https://") {
+            let http_target = normalized.replacen("https://", "http://", 1);
+            if crate::nav_fail::server_tcp_reachable_with_timeout(&http_target, 3000) {
+                return HealthCheckResult {
+                    reachable: true,
+                    url: http_target,
+                };
+            }
+        } else if normalized.starts_with("http://") {
+            let https_target = normalized.replacen("http://", "https://", 1);
+            if crate::nav_fail::server_tcp_reachable_with_timeout(&https_target, 3000) {
+                return HealthCheckResult {
+                    reachable: true,
+                    url: https_target,
+                };
+            }
+        }
+
+        HealthCheckResult {
+            reachable: false,
+            url: normalized,
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+

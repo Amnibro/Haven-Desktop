@@ -76,8 +76,95 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+  build-macos:
+    # One universal build covers Apple Silicon and Intel. The Apple secrets are
+    # optional: with them Tauri signs with the Developer ID and notarizes;
+    # without them the app is left unsigned and Gatekeeper will complain.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+      - run: npm ci
+      - name: Apple signing environment
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Empty variables would make Tauri try to sign or notarize with
+          # nothing, so only pass on the ones that are actually set.
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -n "${!v}" ]; then
+              { echo "$v<<__EOF__"; echo "${!v}"; echo "__EOF__"; } >> "$GITHUB_ENV"
+            fi
+          done
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then echo "::warning::No Apple signing secrets; the macOS build is unsigned."; fi
+      - name: Build macOS app and DMG
+        run: npm run tauri build -- --target universal-apple-darwin --bundles app,dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: haven-desktop-macos
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          retention-days: 30
+          if-no-files-found: error
+
+  build-flatpak:
+    # Wraps the deb from build-linux; the manifest lives in flatpak/.
+    needs: build-linux
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: haven-desktop-linux
+          path: linux
+      - name: Stage deb and shared modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$(find linux -name '*.deb' | head -1)" flatpak/haven.deb
+          git clone --depth 1 https://github.com/flathub/shared-modules flatpak/shared-modules
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: Haven.flatpak
+          manifest-path: flatpak/com.haven.desktop.yml
+          cache: false
+          upload-artifact: false
+      - name: Check the binary's libraries resolve in the runtime
+        shell: bash
+        run: |
+          set -uo pipefail
+          OUT=$(flatpak build --filesystem=host flatpak_app ldd /app/bin/haven-desktop 2>&1) || { echo "::warning::could not run ldd in the build dir"; echo "$OUT"; exit 0; }
+          echo "$OUT"
+          if echo "$OUT" | grep -q 'not found'; then echo "::error::missing libraries in the Flatpak runtime"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: haven-desktop-flatpak
+          path: Haven.flatpak
+          retention-days: 30
+          if-no-files-found: error
+
   publish:
-    needs: [build-windows, build-linux]
+    needs: [build-windows, build-linux, build-macos, build-flatpak]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,24 +181,37 @@ jobs:
           # Branch pushes publish to the release of the version in tauri.conf.json,
           # so bumping the version is what moves testers and the updater forward.
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then TAG="${GITHUB_REF_NAME}"; else TAG="v${VERSION}-tauri"; fi
+          # The Flatpak bundle gets a versioned name like the other downloads.
+          FLATPAK_SRC=$(find dist -name 'Haven.flatpak' | head -1 || true)
+          if [ -n "$FLATPAK_SRC" ]; then mv "$FLATPAK_SRC" "dist/Haven_${VERSION}_x86_64.flatpak"; fi
           # download-artifact keeps each artifact's folder layout (nsis/ is flat,
-          # the Linux one has appimage/ and deb/), so locate files instead of globbing.
-          EXE_PATH=$(find dist -name '*-setup.exe' | head -1)
-          APPIMAGE_PATH=$(find dist -name '*.AppImage' | head -1)
+          # the Linux one has appimage/ and deb/, macos has dmg/ and macos/), so locate files instead of globbing.
+          EXE_PATH=$(find dist -name '*-setup.exe' | head -1 || true)
+          APPIMAGE_PATH=$(find dist -name '*.AppImage' | head -1 || true)
+          MAC_UPDATE_PATH=$(find dist -name '*.app.tar.gz' | head -1 || true)
           BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
-          EXE_PATH="$EXE_PATH" APPIMAGE_PATH="$APPIMAGE_PATH" BASE="$BASE" VERSION="$VERSION" node -e "
+          EXE_PATH="$EXE_PATH" APPIMAGE_PATH="$APPIMAGE_PATH" MAC_UPDATE_PATH="$MAC_UPDATE_PATH" BASE="$BASE" VERSION="$VERSION" node -e "
             const fs=require('fs'), path=require('path'); const enc=encodeURIComponent; const e=process.env;
-            const plat=(p)=>({ signature: fs.readFileSync(p+'.sig','utf8').trim(), url: e.BASE+'/'+enc(path.basename(p)) });
+            const plat=(p)=>({ signature: fs.existsSync(p+'.sig') ? fs.readFileSync(p+'.sig','utf8').trim() : '', url: e.BASE+'/'+enc(path.basename(p)) });
+            const platforms = {};
+            if (e.EXE_PATH) platforms['windows-x86_64'] = plat(e.EXE_PATH);
+            if (e.APPIMAGE_PATH) platforms['linux-x86_64'] = plat(e.APPIMAGE_PATH);
+            // The macOS updater installs the .app.tar.gz; the build is universal.
+            if (e.MAC_UPDATE_PATH) {
+              platforms['darwin-aarch64'] = plat(e.MAC_UPDATE_PATH);
+              platforms['darwin-x86_64'] = plat(e.MAC_UPDATE_PATH);
+            }
+            for (const [k, v] of Object.entries(platforms)) if (!v.signature) { console.error('missing updater signature for '+k); delete platforms[k]; }
             fs.writeFileSync('dist/latest.json', JSON.stringify({
               version: e.VERSION, notes: 'Haven Desktop (Tauri) '+e.VERSION, pub_date: new Date().toISOString(),
-              platforms: { 'windows-x86_64': plat(e.EXE_PATH), 'linux-x86_64': plat(e.APPIMAGE_PATH) }
+              platforms
             }, null, 2));"
           cat dist/latest.json
           TITLE="${TAG#v}"
-          NOTES="Haven Desktop Tauri build (${TITLE}). Windows NSIS installer, Linux AppImage and deb. Requires a Haven server. Self-signed server certificates are accepted on Windows and Linux."
+          NOTES="Haven Desktop Tauri build (${TITLE}). Windows NSIS installer, Linux AppImage/deb/Flatpak, and a universal macOS DMG (Apple Silicon and Intel). Requires a Haven server. Self-signed server certificates are accepted on Windows, Linux and macOS."
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Haven ${TITLE}" --notes "$NOTES" --latest
           fi
-          mapfile -t FILES < <(find dist -type f \( -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.sig' -o -name 'latest.json' \))
+          mapfile -t FILES < <(find dist -type f \( -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.flatpak' -o -name '*.sig' -o -name 'latest.json' \))
           gh release upload "$TAG" "${FILES[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Released: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"

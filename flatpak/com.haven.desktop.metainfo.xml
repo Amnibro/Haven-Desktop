@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.haven.desktop</id>
+  <name>Haven</name>
+  <summary>Private self-hosted chat</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+  <developer id="io.github.amnibro">
+    <name>Amnibro</name>
+  </developer>
+  <description>
+    <p>
+      Desktop client for Haven, a private chat server you host yourself.
+      Connect to any Haven server for text channels, voice and video calls,
+      and screen sharing, with a system tray icon and desktop notifications.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.haven.desktop.desktop</launchable>
+  <url type="homepage">https://github.com/Amnibro/Haven-Desktop</url>
+  <url type="bugtracker">https://github.com/Amnibro/Haven-Desktop/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="2.5.6" date="2026-10-11"/>
+  </releases>
+</component>

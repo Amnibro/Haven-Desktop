@@ -143,7 +143,7 @@ impl ServerManager {
             }
         };
 
-        let node = which::which("node").unwrap_or_else(|_| PathBuf::from("node"));
+        let node = find_node_binary();
         let mut cmd = Command::new(node);
         cmd.args(["--max-old-space-size=512", "--expose-gc", "server.js"])
             .current_dir(server_dir)
@@ -289,3 +289,45 @@ fn find_port(start: u16) -> Option<u16> {
     None
 }
 
+fn find_node_binary() -> PathBuf {
+    if let Ok(p) = which::which("node") {
+        return p;
+    }
+    let common_paths = [
+        "/opt/homebrew/bin/node",
+        "/usr/local/bin/node",
+        "/usr/bin/node",
+        "/bin/node",
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Program Files (x86)\\nodejs\\node.exe",
+    ];
+    for p in common_paths {
+        let path = PathBuf::from(p);
+        if path.exists() {
+            return path;
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        let nvm_pattern = home.join(".nvm/versions/node");
+        if let Ok(entries) = std::fs::read_dir(&nvm_pattern) {
+            let mut versions: Vec<PathBuf> = entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.path().join("bin/node"))
+                .filter(|p| p.exists())
+                .collect();
+            versions.sort();
+            if let Some(latest) = versions.pop() {
+                return latest;
+            }
+        }
+        let fnm_node = home.join(".local/share/fnm/current/bin/node");
+        if fnm_node.exists() {
+            return fnm_node;
+        }
+        let asdf_node = home.join(".asdf/shims/node");
+        if asdf_node.exists() {
+            return asdf_node;
+        }
+    }
+    PathBuf::from("node")
+}

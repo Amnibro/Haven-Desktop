@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Haven
+Comment=Private self-hosted chat
+Exec=haven-desktop
+Icon=com.haven.desktop
+Terminal=false
+Categories=Network;Chat;InstantMessaging;
+StartupWMClass=haven-desktop

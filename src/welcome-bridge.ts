@@ -21,6 +21,14 @@ function detectPlatform(): string {
 
 /** Install `window.haven` for the welcome page (Electron preload compatible). */
 export async function installWelcomeBridge(): Promise<void> {
+  const platform = detectPlatform();
+  if (typeof document !== "undefined" && document.documentElement) {
+    document.documentElement.dataset.platform = platform;
+    if (platform === "darwin") {
+      document.documentElement.classList.add("platform-darwin");
+    }
+  }
+
   let currentState = await invoke<I18nState>("i18n_get_state");
   let translate = createTranslator(currentState.locale);
   const listeners = new Set<(s: I18nState) => void>();
@@ -32,7 +40,7 @@ export async function installWelcomeBridge(): Promise<void> {
   });
 
   window.haven = {
-    platform: detectPlatform(),
+    platform,
 
     server: {
       detect: () => invoke("server_detect"),
@@ -41,6 +49,8 @@ export async function installWelcomeBridge(): Promise<void> {
       browse: () => invoke<string | null>("server_browse"),
       browseFile: () => invoke<string | null>("server_browse"),
       getStatus: () => invoke("server_status"),
+      checkHealth: (serverUrl: string) =>
+        invoke<{ reachable: boolean; url: string }>("server_check_health", { serverUrl }),
       onLog: (cb: (m: string) => void) => {
         void listen<string>("server:log", (e) => cb(e.payload));
       },

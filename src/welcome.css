@@ -82,6 +82,63 @@ body {
 .tb-close:hover { color: #1F0707; }
 .tb-close:hover::before { background: #FF6B6B; }
 
+/* ─── macOS Title Bar Styling ──────────────────────────── */
+.platform-darwin .titlebar {
+  flex-direction: row-reverse;
+  padding: 0 14px;
+  height: 36px;
+  position: relative;
+}
+
+.platform-darwin .titlebar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.platform-darwin .titlebar-controls {
+  flex-direction: row-reverse;
+  gap: 8px;
+  align-items: center;
+}
+
+.platform-darwin .tb-btn {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  border-radius: 50%;
+  font-size: 0;
+  position: relative;
+  transition: transform .12s ease, opacity .15s ease;
+}
+
+.platform-darwin .tb-btn::before {
+  display: none;
+}
+
+.platform-darwin #btn-close {
+  background: #ff5f56;
+  border: 0.5px solid rgba(0, 0, 0, 0.2);
+}
+
+.platform-darwin #btn-min {
+  background: #ffbd2e;
+  border: 0.5px solid rgba(0, 0, 0, 0.2);
+}
+
+.platform-darwin .tb-btn:hover {
+  opacity: 0.85;
+  transform: scale(1.08);
+}
+
+.platform-darwin .tb-btn:active {
+  transform: scale(0.95);
+  opacity: 0.7;
+}
+
 /* ─── Pages ────────────────────────────────────────────── */
 
 .page {

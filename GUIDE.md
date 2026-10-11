@@ -23,6 +23,14 @@ Welcome to **Haven Desktop**, the standalone desktop client for [Haven](https://
 
 The installer creates a desktop shortcut and start menu entry. Uninstall from **Settings → Apps** like any other program.
 
+### macOS (Apple Silicon & Intel)
+
+1. Download `Haven_<version>_aarch64.dmg` from the [latest release](https://github.com/Amnibro/Haven-Desktop/releases/latest)
+2. Open the disk image and drag **Haven** into **Applications**
+3. Launch Haven from Launchpad, Applications, or Spotlight
+
+The Mac build supports the menu bar tray icon, notifications with a dock badge, and self-signed HTTPS from your Haven server. System audio capture for screen share is not available on macOS yet.
+
 ### Linux (AppImage)
 
 ```bash
@@ -41,6 +49,15 @@ sudo dpkg -i haven*.deb
 ```
 
 Or double-click the `.deb` to install via your system's package manager. Haven appears in your application menu under **Network** / **Chat**.
+
+### Linux (Flatpak)
+
+```bash
+flatpak install --user Haven_*_x86_64.flatpak
+flatpak run com.haven.desktop
+```
+
+The bundle uses the GNOME runtime from Flathub; add the Flathub remote first if your system doesn't have it (`flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo`). The Flatpak build doesn't update itself: install the newer bundle from the releases page when one comes out. **Host My Server** needs Node.js, which the sandbox can't reach, so use the AppImage or deb if you want to host from this machine.
 
 ---
 

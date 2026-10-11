@@ -2,6 +2,13 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.5.6-tauri (2026-10-11)
+
+- **macOS.** A universal (Apple Silicon and Intel) `.dmg` is now published with every release. Self-signed Haven servers are accepted through a WKWebView certificate hook, unread messages put a badge on the Dock icon, the tray icon lives in the menu bar, and a server started from the app finds Node installed by Homebrew, nvm, fnm or asdf even when Haven was launched from Finder. System audio capture for screen share is not available on macOS yet.
+- **Flatpak.** Linux releases include a `.flatpak` bundle on the GNOME runtime with tray, notifications, microphone and camera. It does not update itself; hosting a server from it needs Node on the host, so use the AppImage or deb for that.
+- **Joining and creating channels.** The Join button and Enter key now accept a full invite link as well as a bare code, and Create sends the channel options (private, temporary, forum, add everyone, template) through the live connection. A join you asked for switches to the new channel; joins Haven repeats on reconnect are left alone.
+- **Connecting from Welcome** no longer waits on a separate `/api/health` request first, which failed against servers that do not answer it and blocked the connection.
+
 ## v2.5.5-tauri (2026-10-05)
 
 - **Pop-up windows open.** Linking Steam or Spotify under Connections, the single sign-on consent page and game pop-outs called `window.open`, which a Tauri webview silently refused, so Haven reported "allow pop-ups" and nothing happened. Pop-ups now open in their own Haven window, close themselves when the page finishes, and have no access to the desktop bridge.

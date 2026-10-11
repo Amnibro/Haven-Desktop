@@ -18,6 +18,11 @@ use tauri_plugin_store::StoreExt;
 fn check_for_update(app: tauri::AppHandle) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     use tauri_plugin_updater::UpdaterExt;
+    // The Flatpak wraps the deb's binary, so the updater would try to install
+    // a deb from inside the sandbox. Flatpak users update the bundle instead.
+    if std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists() {
+        return;
+    }
     tauri::async_runtime::spawn(async move {
         let Ok(updater) = app.updater() else { return };
         let Ok(Some(update)) = updater.check().await else { return };
@@ -74,6 +79,7 @@ pub fn run() {
             commands::server_stop,
             commands::server_status,
             commands::server_browse,
+            commands::server_check_health,
             commands::settings_get,
             commands::settings_set,
             commands::app_version,
@@ -130,6 +136,12 @@ pub fn run() {
             state::ensure_defaults(app.handle())?;
             state::refresh_locale(app.handle())?;
             tray::setup_tray(app.handle())?;
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(menu) = tauri::menu::Menu::default(app.handle()) {
+                    let _ = app.set_menu(menu);
+                }
+            }
             {
                 let (bg, fg) = theme_icon::stored(app.handle());
                 theme_icon::apply(app.handle(), bg, fg);

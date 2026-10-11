@@ -1,7 +1,9 @@
 use crate::state::{self, AppState};
 use serde::Deserialize;
 use serde_json::json;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
+#[cfg(any(windows, target_os = "linux"))]
+use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 #[cfg(target_os = "linux")]
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -58,6 +60,11 @@ pub fn notify(app: AppHandle, opts: NotifyOpts) -> Result<bool, String> {
     Ok(true)
 }
 
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn haven_macos_set_badge_label(label: *const std::ffi::c_char);
+}
+
 #[tauri::command]
 pub fn notification_badge(
     app: AppHandle,
@@ -70,13 +77,26 @@ pub fn notification_badge(
     let badges = state.server_badges.lock().clone();
     let payload = json!({ "badges": badges, "names": {} });
     let _ = app.emit("server-badge-update", payload);
+    #[cfg(any(windows, target_os = "macos"))]
+    let any = badges.values().any(|v| *v);
     // Red dot on the taskbar icon while anything is unread (Electron's overlay
     // icon). Tauri only implements set_overlay_icon on Windows.
     #[cfg(windows)]
     if let Some(main) = app.get_webview_window("main") {
-        let any = badges.values().any(|v| *v);
         let dot = tauri::image::Image::from_bytes(include_bytes!("../../icons/unread.png")).ok();
         let _ = main.set_overlay_icon(if any { dot } else { None });
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        let c_label = if any {
+            CString::new("•").ok()
+        } else {
+            None
+        };
+        unsafe {
+            haven_macos_set_badge_label(c_label.as_ref().map(|c| c.as_ptr()).unwrap_or(std::ptr::null()));
+        }
     }
     Ok(())
 }

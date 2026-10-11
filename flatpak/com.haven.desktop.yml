@@ -1,0 +1,43 @@
+# Flatpak for the Linux Tauri build. CI drops the release deb next to this
+# file as haven.deb and clones https://github.com/flathub/shared-modules into
+# flatpak/shared-modules before running flatpak-builder (see build-tauri.yml).
+id: com.haven.desktop
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: haven-desktop
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.Notifications
+  # Tray icon (libayatana-appindicator over StatusNotifierItem)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-run/tray-icon:create
+
+modules:
+  # The GNOME runtime has no appindicator, and Tauri's tray needs it.
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: haven-desktop
+    buildsystem: simple
+    sources:
+      - type: file
+        path: haven.deb
+      - type: file
+        path: com.haven.desktop.desktop
+      - type: file
+        path: com.haven.desktop.metainfo.xml
+    build-commands:
+      - ar -x haven.deb
+      - tar -xf data.tar.gz
+      - install -Dm755 usr/bin/haven-desktop /app/bin/haven-desktop
+      - install -Dm644 com.haven.desktop.desktop /app/share/applications/com.haven.desktop.desktop
+      - install -Dm644 com.haven.desktop.metainfo.xml /app/share/metainfo/com.haven.desktop.metainfo.xml
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/haven-desktop.png /app/share/icons/hicolor/32x32/apps/com.haven.desktop.png
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/haven-desktop.png /app/share/icons/hicolor/128x128/apps/com.haven.desktop.png
+      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/haven-desktop.png /app/share/icons/hicolor/256x256/apps/com.haven.desktop.png

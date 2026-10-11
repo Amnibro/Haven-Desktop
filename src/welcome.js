@@ -265,23 +265,7 @@
     setTranslatedText(connectBtn, 'welcome.connecting');
 
     try {
-      // Quick health check — try to reach the server
-      const controller = new AbortController();
-      const timeout    = setTimeout(() => controller.abort(), 8000);
-
-      const res = await fetch(serverUrl + '/api/health', {
-        signal: controller.signal,
-      }).catch(() => null);
-
-      clearTimeout(timeout);
-
-      if (!res || !res.ok) {
-        setTranslatedText(joinError, 'welcome.error.serverUnreachable');
-        joinError.style.display = 'block';
-        return;
-      }
-
-      const remember = $('#chk-remember').checked;
+      const remember = $('#chk-remember')?.checked ?? false;
 
       // Merge with existing prefs to preserve audioInput, serverPath, etc.
       const existing = await window.haven.settings.get('userPrefs') || {};
