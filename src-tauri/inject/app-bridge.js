@@ -639,6 +639,33 @@
 
     // Delegated capture click listener
     document.addEventListener('click', (e) => {
+      if (e.target?.closest?.('#join-section-close')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const body = document.getElementById('join-section-body');
+        const arrow = document.getElementById('join-section-arrow');
+        body?.classList.add('collapsed');
+        arrow?.classList.add('collapsed');
+        localStorage.setItem('haven_join_collapsed', '1');
+        return;
+      }
+      if (e.target?.closest?.('#create-section-close')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const body = document.getElementById('create-section-body');
+        const arrow = document.getElementById('create-section-arrow');
+        body?.classList.add('collapsed');
+        arrow?.classList.add('collapsed');
+        localStorage.setItem('haven_create_collapsed', '1');
+        return;
+      }
+      if (e.target?.closest?.('#join-create-modal-close, #close-join-create-btn')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const modal = document.getElementById('join-create-modal');
+        if (modal) modal.style.display = 'none';
+        return;
+      }
       if (e.target?.closest?.('#join-channel-btn')) {
         e.preventDefault();
         e.stopPropagation();
