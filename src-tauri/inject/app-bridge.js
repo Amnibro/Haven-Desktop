@@ -1717,27 +1717,66 @@
     }
   }, true);
 
-  // ── Voice shortcut events ────────────────────────────────
-  function clickVoice(id) {
-    document.getElementById(id)?.click();
+  const pttState = () => {
+    const app = window.app || null, voice = app && app.voice;
+    if (voice && typeof voice.isMuted === 'boolean') return { app, isMuted: voice.isMuted, inVoice: !!voice.inVoice };
+    const buttons = [document.getElementById('voice-mute-btn'), document.getElementById('voice-mute-btn-header')].filter(Boolean);
+    if (!buttons.length) return null;
+    const shown = buttons.find((b) => b.style?.display !== 'none'), btn = shown || buttons[0], pressed = btn.getAttribute('aria-pressed');
+    return { app, btn, inVoice: !!shown, isMuted: pressed === 'true' || pressed === 'false' ? pressed === 'true' : btn.classList.contains('muted') || btn.classList.contains('is-muted') };
+  };
+  const pttFlip = (s) => { try { if (typeof s.app?._toggleMute === 'function') return s.app._toggleMute(); } catch (err) { console.warn('[PTT] _toggleMute threw:', err); } (s.btn || document.getElementById('voice-mute-btn'))?.click(); };
+  const pttUsable = (s, what) => !s ? (console.log(`[PTT] ${what}: no voice state on the page yet, ignored`), false) : s.inVoice === false ? (console.log(`[PTT] ${what}: not in voice, ignored`), false) : true;
+  function pttSetTalking(shouldTalk, via = 'key') {
+    const s = pttState(), what = `${via} ${shouldTalk ? 'down' : 'up'}`;
+    if (!pttUsable(s, what)) return;
+    const flip = shouldTalk ? s.isMuted : !s.isMuted;
+    console.log(`[PTT] ${what}: muted=${s.isMuted}, ${flip ? 'toggling' : 'no change'}`);
+    if (flip) pttFlip(s);
   }
-
-  function pttSetTalking(shouldTalk) {
-    const btn = document.getElementById('voice-mute-btn');
-    if (!btn) return;
-    const pressed = btn.getAttribute('aria-pressed');
-    let isMuted;
-    if (pressed === 'true' || pressed === 'false') isMuted = pressed === 'true';
-    else isMuted = btn.classList.contains('muted') || btn.classList.contains('is-muted');
-    if (shouldTalk ? isMuted : !isMuted) btn.click();
+  let pttLastToggle = 0;
+  function pttToggleOnce(via) {
+    const now = Date.now();
+    if (now - pttLastToggle < 250) return;
+    pttLastToggle = now;
+    const s = pttState();
+    if (pttUsable(s, `${via} toggle`)) pttFlip(s);
   }
-
-  listen('voice:mute-toggle', () => clickVoice('voice-mute-btn'));
-  listen('voice:deafen-toggle', () => clickVoice('voice-deafen-btn'));
-  listen('voice:ptt-toggle', () => clickVoice('voice-mute-btn'));
-  listen('voice:ptt-down', () => pttSetTalking(true));
-  listen('voice:ptt-up', () => pttSetTalking(false));
-
+  const PTT_DOM_KEYS = { Space: ' ', Up: 'ArrowUp', Down: 'ArrowDown', Left: 'ArrowLeft', Right: 'ArrowRight', Return: 'Enter', Escape: 'Escape', Tab: 'Tab', Backspace: 'Backspace', Delete: 'Delete', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown' };
+  const PTT_LONE_MODS = { CommandOrControl: ['control', 'meta'], CmdOrCtrl: ['control', 'meta'], Control: ['control'], Ctrl: ['control'], Meta: ['meta'], Cmd: ['meta'], Super: ['meta'], Alt: ['alt'], Shift: ['shift'] };
+  let pttBinding = null, pttToggleMode = false, pttDown = false;
+  const parsePtt = (accel) => {
+    const mouse = /^Mouse(\d+)$/i.exec(accel || '');
+    if (mouse) return { mouseButton: parseInt(mouse[1], 10) - 1 };
+    const parts = String(accel || '').split('+').map((p) => p.trim()).filter(Boolean), key = parts.pop(), mods = { ctrl: false, alt: false, shift: false };
+    if (!key) return null;
+    for (const p of parts) {
+      if (['CommandOrControl', 'CmdOrCtrl', 'Control', 'Ctrl', 'Meta', 'Cmd', 'Command', 'Super'].includes(p)) mods.ctrl = true;
+      else if (p === 'Alt' || p === 'Option') mods.alt = true;
+      else if (p === 'Shift') mods.shift = true;
+      else return null;
+    }
+    const lone = PTT_LONE_MODS[key];
+    return { mods, lone: !!lone, keys: lone || [String(PTT_DOM_KEYS[key] || key).toLowerCase()] };
+  };
+  const pttKeyMatches = (e, b, isDown) => !!b && b.mouseButton == null && b.keys.includes(String(e.key || '').toLowerCase()) && (!isDown || b.lone || ((!b.mods.ctrl || e.ctrlKey || e.metaKey) && (!b.mods.alt || e.altKey) && (!b.mods.shift || e.shiftKey)));
+  const refreshPttBinding = () => invoke('shortcuts_get').then((cfg) => {
+    pttToggleMode = !!cfg && cfg.pttMode === 'toggle';
+    pttBinding = cfg && cfg.ptt ? parsePtt(cfg.ptt) : null;
+    if (!pttBinding && pttDown) { pttDown = false; pttSetTalking(false); }
+  }).catch(() => { pttBinding = null; });
+  const pttPress = (match) => { if (!match) return; if (pttToggleMode) return pttToggleOnce('page'); if (pttDown) return; pttDown = true; pttSetTalking(true); };
+  const pttRelease = (match) => { if (!match || !pttDown || pttToggleMode) return; pttDown = false; pttSetTalking(false); };
+  window.addEventListener('keydown', (e) => pttPress(!e.repeat && pttKeyMatches(e, pttBinding, true)), true);
+  window.addEventListener('keyup', (e) => pttRelease(pttKeyMatches(e, pttBinding, false)), true);
+  window.addEventListener('mousedown', (e) => pttPress(pttBinding?.mouseButton != null && e.button === pttBinding.mouseButton), true);
+  window.addEventListener('mouseup', (e) => pttRelease(pttBinding?.mouseButton != null && e.button === pttBinding.mouseButton), true);
+  window.addEventListener('DOMContentLoaded', refreshPttBinding);
+  listen('voice:mute-toggle', () => document.getElementById('voice-mute-btn')?.click());
+  listen('voice:deafen-toggle', () => document.getElementById('voice-deafen-btn')?.click());
+  listen('voice:ptt-toggle', () => pttToggleOnce('shortcut'));
+  listen('voice:ptt-down', () => pttSetTalking(true, 'shortcut'));
+  listen('voice:ptt-up', () => pttSetTalking(false, 'shortcut'));
   // ── getDisplayMedia override ─────────────────────────────
   function installGetDisplayMediaOverride() {
     if (!navigator.mediaDevices?.getDisplayMedia) {
