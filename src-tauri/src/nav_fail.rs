@@ -228,28 +228,24 @@ fn clear_pending(app: &AppHandle) {
     *app.state::<AppState>().pending_server_load.lock() = None;
 }
 
-fn maybe_timeout(app: &AppHandle, watched: &str) {
+fn still_waiting(app: &AppHandle, watched: &str, generation: u64) -> Option<bool> {
     let state = app.state::<AppState>();
-    let pending = state.pending_server_load.lock().clone();
-    if pending.as_deref() != Some(watched) {
-        return;
-    }
-    if let Some(main) = app.get_webview_window("main") {
-        if let Ok(current) = main.url() {
-            if is_desktop_asset_url(&current) {
-                return;
-            }
-        }
-    }
-    let failed = state
-        .active_server_url
-        .lock()
-        .clone()
-        .unwrap_or_else(|| watched.to_string());
-    drop(pending);
-    show_connection_error(app, &failed);
+    if state.pending_server_load.lock().as_deref() != Some(watched) || *state.load_generation.lock() != generation { return None }
+    let current = app.get_webview_window("main").and_then(|m| m.url().ok());
+    if current.map(|c| is_desktop_asset_url(&c)).unwrap_or(false) { return None }
+    Some(crate::cert_trust::question_pending(app) || *state.pending_loading.lock())
 }
-
+fn watch_load(app: AppHandle, watched: String, generation: u64) {
+    let started = std::time::Instant::now();
+    std::thread::sleep(Duration::from_secs(15));
+    while let Some(waiting) = still_waiting(&app, &watched, generation) {
+        if !waiting || started.elapsed() >= Duration::from_secs(90) {
+            let failed = app.state::<AppState>().active_server_url.lock().clone().unwrap_or_else(|| watched.clone());
+            return show_connection_error(&app, &failed);
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
+}
 pub fn on_page_load(app: &AppHandle, payload: &PageLoadPayload<'_>) {
     let url = payload.url();
     if is_desktop_asset_url(url) {
@@ -262,14 +258,13 @@ pub fn on_page_load(app: &AppHandle, payload: &PageLoadPayload<'_>) {
                 return;
             }
             mark_pending(app, url);
-            let app = app.clone();
-            let watched = url.to_string();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_secs(15));
-                maybe_timeout(&app, &watched);
-            });
+            *app.state::<AppState>().pending_loading.lock() = true;
+            let generation = { let st = app.state::<AppState>(); let mut g = st.load_generation.lock(); *g += 1; *g };
+            let (app, watched) = (app.clone(), url.to_string());
+            std::thread::spawn(move || watch_load(app, watched, generation));
         }
         PageLoadEvent::Finished => {
+            *app.state::<AppState>().pending_loading.lock() = false;
             if looks_like_browser_error(url) {
                 let failed = app
                     .state::<AppState>()

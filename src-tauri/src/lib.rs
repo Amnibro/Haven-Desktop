@@ -213,7 +213,7 @@ pub fn run() {
             if window.label() == "main" {
                 let main = window.app_handle().get_webview_window("main");
                 match event {
-                    tauri::WindowEvent::Focused(f) => { if let Some(w) = &main { if *f { lowmem::set_low_memory(w, false); } let _ = w.eval(&format!("window.__havenFocus&&window.__havenFocus({f})")); } }
+                    tauri::WindowEvent::Focused(f) => { if let Some(w) = &main { if *f { lowmem::set_low_memory(w, false); let _ = w.request_user_attention(None); let _ = cfg!(target_os = "linux").then(|| w.as_ref().set_focus()); } let _ = w.eval(&format!("window.__havenFocus&&window.__havenFocus({f})")); } }
                     tauri::WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => { if let Some(w) = &main { lowmem::set_low_memory(w, true); } }
                     _ => {}
                 }

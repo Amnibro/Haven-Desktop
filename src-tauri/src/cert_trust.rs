@@ -83,7 +83,7 @@ mod linux {
             let dialog = app.dialog().message(message).title(state::t(&app, "cert.title")).kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom(state::t(&app, if changed { "cert.trustNew" } else { "cert.trust" }), state::t(&app, "dialog.cancel")));
             let dialog = match app.get_webview_window(&label) { Some(w) => dialog.parent(&w), None => dialog };
             dialog.show(move |yes| {
-                let _ = yes.then(|| remember(&app2, &host, &fp));
+                let _ = yes.then(|| { remember(&app2, &host, &fp); *app2.state::<AppState>().pending_loading.lock() = true; });
                 app2.state::<AppState>().cert_questions.lock().remove(&key);
                 let target = app2.get_webview_window(&label);
                 match (yes, target, label.as_str()) {

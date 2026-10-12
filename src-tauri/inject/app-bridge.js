@@ -269,7 +269,7 @@
     }
 
     function isAuthPageReady(elapsed) {
-      if (document.readyState !== 'complete') return false;
+      if (document.readyState === 'loading') return false;
 
       // Check if i18n has translated the login submit button
       const submitBtn = document.querySelector('button[type="submit"]');
@@ -298,7 +298,7 @@
     }
 
     function isAppPageReady(elapsed) {
-      if (document.readyState !== 'complete') return false;
+      if (document.readyState === 'loading') return false;
 
       // Check if theme is still pending
       if (document.documentElement.hasAttribute('data-haven-theme-pending')) return false;
