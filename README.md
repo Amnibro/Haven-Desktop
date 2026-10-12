@@ -4,7 +4,7 @@
 
 This is a **Tauri 2** port of [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop) (originally Electron). It connects to any [Haven](https://github.com/ancsemi/Haven) server with a lighter native shell: system tray, notifications, local server hosting, and per-app audio capture via the same WASAPI / PulseAudio native code.
 
-> **You need a Haven server to use this app.** Haven Desktop is a client — it connects to a Haven server running on your (or a friend's) machine. Download and set up [Haven](https://github.com/ancsemi/Haven) first if you do not already have one.
+> **You need a Haven server to use this app.** Haven Desktop is a client — it connects to a Haven server running on your (or a friend's) machine. Download and set up [Haven](https://github.com/ancsemi/Haven) first if you do not already have one. Haven's website is [haven-app.com](https://haven-app.com/).
 
 ## Features
 
