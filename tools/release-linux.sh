@@ -10,9 +10,11 @@ IMG=${HAVEN_FLATPAK_IMAGE:-ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
 mkdir -p "$OUT"
 if [[ -z $DEB ]]; then
   [[ -n ${TAURI_SIGNING_PRIVATE_KEY:-} ]] || { echo "TAURI_SIGNING_PRIVATE_KEY is not set; the updater needs signed AppImages"; exit 1; }
-  npm ci
-  npx tauri build --bundles appimage,deb
-  B=src-tauri/target/release/bundle
+  podman build -q -t haven-linux-builder -f tools/linux-builder.Containerfile tools >/dev/null
+  CACHE=${HAVEN_LINUX_CACHE:-$HOME/.cache/amni-build/haven-linux}
+  mkdir -p "$CACHE/target" "$CACHE/cargo" "$CACHE/npm"
+  podman run --rm -v "$ROOT:/src" -v "$CACHE/target:/target" -v "$CACHE/cargo:/root/.cargo/registry" -v "$CACHE/npm:/root/.npm" -e CARGO_TARGET_DIR=/target -e TAURI_SIGNING_PRIVATE_KEY -e TAURI_SIGNING_PRIVATE_KEY_PASSWORD haven-linux-builder sh -c "npm ci && npx tauri build --bundles appimage,deb"
+  B=$CACHE/target/release/bundle
   cp "$B"/appimage/*.AppImage "$OUT/Haven_${V}_amd64.AppImage"
   cp "$B"/appimage/*.AppImage.sig "$OUT/Haven_${V}_amd64.AppImage.sig"
   DEB=$(ls -t "$B"/deb/*.deb | head -1)

@@ -1,12 +1,12 @@
 fn main() {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let mut build = cc::Build::new();
     build.cpp(true);
     build.std("c++17");
     build.file("native/src/c_api.cpp");
     build.include("native/src");
 
-    #[cfg(target_os = "linux")]
-    {
+    if target_os == "linux" {
         let cxx = std::env::var("CXX").unwrap_or_else(|_| "g++".into());
         build.compiler(&cxx);
         build.file("native/src/linux/pulse_capture.cpp");
@@ -27,14 +27,13 @@ fn main() {
         println!("cargo:rustc-link-lib=stdc++");
     }
 
-    #[cfg(target_os = "windows")]
-    {
+    else if target_os == "windows" {
         // Let cc-rs pick MSVC (cl.exe) on windows-msvc targets.
         // Do not force g++ — MinGW lacks Windows SDK headers like
         // audioclientactivationparams.h.
         if let Ok(cxx) = std::env::var("CXX") {
             if !cxx.is_empty() {
-                build.compiler(cxx);
+                build.compiler(&cxx);
             }
         }
         build.file("native/src/win/wasapi_capture.cpp");
@@ -42,12 +41,11 @@ fn main() {
         println!("cargo:rustc-link-lib=ole32");
         println!("cargo:rustc-link-lib=mmdevapi");
         println!("cargo:rustc-link-lib=uuid");
-        println!("cargo:rustc-link-lib=Avrt");
-        println!("cargo:rustc-link-lib=Psapi");
+        println!("cargo:rustc-link-lib=avrt");
+        println!("cargo:rustc-link-lib=psapi");
     }
 
-    #[cfg(target_os = "macos")]
-    {
+    else if target_os == "macos" {
         let cxx = std::env::var("CXX").unwrap_or_else(|_| "c++".into());
         build.compiler(&cxx);
         build.file("native/src/null_capture.cpp");
@@ -59,8 +57,7 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=Security");
     }
 
-    #[cfg(all(not(target_os = "linux"), not(target_os = "windows"), not(target_os = "macos")))]
-    {
+    else {
         let cxx = std::env::var("CXX").unwrap_or_else(|_| "c++".into());
         build.compiler(&cxx);
         build.file("native/src/null_capture.cpp");

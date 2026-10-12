@@ -37,9 +37,14 @@ bin_dir.mkdir(parents=True, exist_ok=True)
 pk = "\n".join(stanzas).encode()
 (bin_dir / "Packages").write_bytes(pk)
 (bin_dir / "Packages.gz").write_bytes(gzip.compress(pk, mtime=0))
-files = [(f.relative_to(dist).as_posix(), f.read_bytes()) for f in sorted(bin_dir.iterdir())]
+files = [(f.relative_to(dist).as_posix(), f.read_bytes()) for f in sorted(bin_dir.iterdir()) if f.is_file()]
+for algo, fn in (("SHA256", hashlib.sha256), ("SHA1", hashlib.sha1), ("MD5Sum", hashlib.md5)):
+    hd = bin_dir / "by-hash" / algo
+    hd.mkdir(parents=True, exist_ok=True)
+    [(hd / fn(b).hexdigest()).write_bytes(b) for _, b in files]
+    [p.unlink() for p in sorted(hd.iterdir(), key=lambda p: p.stat().st_mtime)[:-4 * len(files)]]
 release = "\n".join([
-    "Origin: Amni-Scient", "Label: Amni-Scient", "Suite: stable", "Codename: stable", "Architectures: amd64", "Components: main",
+    "Origin: Amni-Scient", "Label: Amni-Scient", "Suite: stable", "Codename: stable", "Architectures: amd64", "Components: main", "Acquire-By-Hash: yes",
     "Description: Haven Desktop and other Amni-Scient apps", "Date: " + time.strftime("%a, %d %b %Y %H:%M:%S UTC", time.gmtime()),
     *[f"{algo}:\n" + "\n".join(f" {digests(b)[algo]} {len(b)} {n}" for n, b in files) for algo in ("MD5sum", "SHA1", "SHA256")]]) + "\n"
 (dist / "Release").write_text(release.replace("MD5sum:", "MD5Sum:", 1))
