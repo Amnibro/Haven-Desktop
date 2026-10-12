@@ -2,7 +2,10 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
-## v2.6.0-tauri (unreleased)
+## v2.6.0-tauri (2026-10-12)
+
+- **New update signing key.** 2.6.0 is signed with a new updater key, so copies of 2.5.x installed from the AppImage or the Windows installer cannot update to it on their own: download 2.6.0 once and later versions update in-app again. Flatpak and Debian/Ubuntu users update through their package manager.
+- **Linux packages from amni-scient.com.** A Flatpak remote (`flatpak install --from https://downloads.amni-scient.com/flatpak/haven.flatpakref`) and a signed APT repository (`curl -fsSL https://downloads.amni-scient.com/apt/install.sh | sh`) keep Haven updated with the rest of the system. Releases are built locally with `tools/release-linux.sh`.
 
 Level with Electron 1.6.2.
 
@@ -16,6 +19,7 @@ Level with Electron 1.6.2.
 - **A slow connection no longer ends in "Connection Problem".** The app gave up on a server that had not answered within 15 seconds; it now keeps waiting while the page is still loading, up to 90 seconds, and never while a certificate question is open. On Linux, a load the app cancels itself (a retry, a redirect) no longer counts as a failure.
 - **A server shows as soon as its page is ready**, the way a browser does, instead of holding the loading screen until every picture on it has arrived.
 - **The taskbar flashes when a notification shows** and stops when you click into the app. Returning to the window hands keyboard focus back to the page on Linux.
+- **Welcome and connection screens look like the rest of Haven.** The welcome window has an edge and the Amni OS title-bar buttons, the language menu and checkbox follow the theme instead of showing as white boxes, and the welcome, join and connection-error screens take the colors (light or dark) of the last server you used. The connection-error page lost its duplicate buttons and the gap under them, and Go Back to My Server no longer offers the server that just failed. The Desktop App settings hide switches that did nothing in this build (hide menu bar, force SDR, GPU vsync, frame-rate cap).
 - Haven's website is haven-app.com.
 - Not ported, Electron-only: X11 mode, the VA-API switch, the HDR colour profile, the Electron screen-share picker, hardware encoder preference and per-app audio in the picker (the webview's own share picker is used), and the hidden menu bar strip.
 

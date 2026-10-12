@@ -1,11 +1,6 @@
 name: Build Haven Desktop (Tauri)
 
 on:
-  push:
-    branches:
-      - cursor/tauri-port-3a53
-    tags:
-      - "v*"
   workflow_dispatch:
 
 permissions:

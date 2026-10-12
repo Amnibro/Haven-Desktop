@@ -78,7 +78,7 @@
       "open": true
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU2MjQ4QjA5RjgwOURCNzYKUldSMjJ3bjRDWXNrVmswaGV2bFU0eHM0eWZMVmRrcExMRFJ4aEpvT05VMDQ2REpLbndEZUJCVTMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENEOTVDMzkwMzRERTZGREYKUldUZmI5NDBrTU9Welc1VEVLc3lSZjg4RjQ2ank1NVlXZFVYWGpCTDMzUHNEZHFKa2srZmtyVWYK",
       "endpoints": ["https://github.com/Amnibro/Haven-Desktop/releases/latest/download/latest.json"],
       "windows": { "installMode": "passive" }
     }
