@@ -84,6 +84,7 @@ pub fn ensure_defaults(app: &AppHandle) -> Result<(), String> {
         "startOnLogin": false,
         "startHidden": false,
         "minimizeToTray": false,
+        "flashTaskbar": true,
         "forceSDR": false,
         "hideMenuBar": false,
         "disableGpuVsync": false,

@@ -28,7 +28,8 @@ fn open_from_notification(app: &AppHandle, channel_code: Option<&str>) {
 }
 #[tauri::command]
 pub fn notify(app: AppHandle, opts: NotifyOpts) -> Result<bool, String> {
-    let _ = app.get_webview_window("main").filter(|m| !m.is_focused().unwrap_or(true)).map(|m| m.request_user_attention(Some(tauri::UserAttentionType::Informational)));
+    let flash = state::get_value(&app, "flashTaskbar").ok().and_then(|v| v.as_bool()) != Some(false);
+    let _ = app.get_webview_window("main").filter(|m| flash && !m.is_focused().unwrap_or(true)).map(|m| m.request_user_attention(Some(tauri::UserAttentionType::Informational)));
     let title = opts.title.unwrap_or_else(|| "Haven".into());
     let body = opts.body.unwrap_or_default();
     #[cfg(target_os = "linux")]

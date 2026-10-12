@@ -84,6 +84,7 @@ pub fn run() {
             commands::desktop_set_start_on_login,
             commands::desktop_set_start_hidden,
             commands::desktop_set_minimize_to_tray,
+            commands::desktop_set_flash_taskbar,
             commands::desktop_set_force_sdr,
             commands::desktop_set_hide_menu_bar,
             commands::desktop_set_disable_gpu_vsync,

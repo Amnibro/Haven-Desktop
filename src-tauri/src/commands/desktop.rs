@@ -1,6 +1,6 @@
 use crate::state;
 use serde_json::json;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 #[tauri::command]
 pub fn desktop_get_prefs(app: AppHandle) -> Result<serde_json::Value, String> {
@@ -8,6 +8,7 @@ pub fn desktop_get_prefs(app: AppHandle) -> Result<serde_json::Value, String> {
         "startOnLogin": state::get_bool(&app, "startOnLogin")?,
         "startHidden": state::get_bool(&app, "startHidden")?,
         "minimizeToTray": state::get_bool(&app, "minimizeToTray")?,
+        "flashTaskbar": state::get_value(&app, "flashTaskbar")?.as_bool() != Some(false),
         "forceSDR": state::get_bool(&app, "forceSDR")?,
         "hideMenuBar": state::get_bool(&app, "hideMenuBar")?,
         "disableGpuVsync": state::get_bool(&app, "disableGpuVsync")?,
@@ -55,6 +56,17 @@ pub fn desktop_set_start_hidden(app: AppHandle, enabled: bool) -> Result<bool, S
 pub fn desktop_set_minimize_to_tray(app: AppHandle, enabled: bool) -> Result<bool, String> {
     state::set_value(&app, "minimizeToTray", json!(enabled))?;
     Ok(true)
+}
+
+#[tauri::command]
+pub fn desktop_set_flash_taskbar(app: AppHandle, enabled: bool) -> Result<serde_json::Value, String> {
+    state::set_value(&app, "flashTaskbar", json!(enabled))?;
+    if !enabled {
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.request_user_attention(None);
+        }
+    }
+    Ok(json!({ "requiresRestart": false }))
 }
 
 #[tauri::command]

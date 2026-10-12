@@ -1169,6 +1169,7 @@
       setStartOnLogin: (v) => invoke('desktop_set_start_on_login', { enabled: !!v }),
       setStartHidden: (v) => invoke('desktop_set_start_hidden', { enabled: !!v }),
       setMinimizeToTray: (v) => invoke('desktop_set_minimize_to_tray', { enabled: !!v }),
+      setFlashTaskbar: (v) => invoke('desktop_set_flash_taskbar', { enabled: !!v }),
       setForceSDR: (v) => invoke('desktop_set_force_sdr', { enabled: !!v }),
       setHideMenuBar: (v) => invoke('desktop_set_hide_menu_bar', { enabled: !!v }),
       setDisableGpuVsync: (v) => invoke('desktop_set_disable_gpu_vsync', { enabled: !!v }),

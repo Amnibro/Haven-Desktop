@@ -16,6 +16,7 @@ const ALLOWED: &[&str] = &[
     "startOnLogin",
     "startHidden",
     "minimizeToTray",
+    "flashTaskbar",
     "forceSDR",
     "disableGpuVsync",
     "unlimitFrameRate",
