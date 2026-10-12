@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en" dir="ltr" class="frameless">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,8 +11,8 @@
   <header class="titlebar" id="titlebar" data-tauri-drag-region>
     <span class="titlebar-title">Haven Desktop</span>
     <div class="titlebar-controls">
-      <button class="tb-btn" id="btn-min" title="Minimize" data-i18n-title="window.minimize">&#x2013;</button>
-      <button class="tb-btn tb-close" id="btn-close" title="Close" data-i18n-title="window.close">&#x2715;</button>
+      <button class="tb-btn" id="btn-min" title="Minimize" data-i18n-title="window.minimize"><svg viewBox="0 0 11 11" aria-hidden="true"><path d="M0.5 6.7H10.5"/></svg></button>
+      <button class="tb-btn tb-close" id="btn-close" title="Close" data-i18n-title="window.close"><svg viewBox="0 0 11 11" aria-hidden="true"><path d="M0.7 0.7L10.3 10.3M10.3 0.7L0.7 10.3"/></svg></button>
     </div>
   </header>
 
@@ -97,9 +97,9 @@
       <button class="btn primary" id="btn-connect" data-i18n="welcome.connect" disabled>Connect</button>
       <p class="error-text" id="join-error" style="display:none"></p>
 
-      <div id="join-recent-section" class="join-recent-section" style="display:none; width: 100%; margin-top: 16px;">
-        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 8px;">Saved & Recent Servers</div>
-        <div id="join-recent-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto;"></div>
+      <div id="join-recent-section" class="recent-section" hidden>
+        <div class="recent-title" data-i18n="serverPicker.recent">Recent Servers</div>
+        <div id="join-recent-list" class="recent-servers-list"></div>
       </div>
     </div>
   </section>

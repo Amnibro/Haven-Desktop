@@ -187,6 +187,9 @@ pub fn apply(app: &AppHandle, bg: u32, fg: u32) {
     for label in ["main", "welcome"] {
         if let Some(w) = app.get_webview_window(label) {
             let _ = w.set_icon(icon.clone());
+            let (r, g, b) = rgb(bg);
+            let _ = w.set_background_color(Some(tauri::webview::Color(r, g, b, 255)));
+            let _ = w.set_theme(Some(if luminance(bg) > 0.5 { tauri::Theme::Light } else { tauri::Theme::Dark }));
             paint_caption(&w, bg, fg);
         }
     }

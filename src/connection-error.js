@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createTranslator } from "./i18n/index.js";
+import { renderServers, watchTheme } from "./ui.js";
+watchTheme();
 
 function paramsUrl() {
   return new URLSearchParams(location.search).get("url") || "";
@@ -19,18 +21,12 @@ function normalizeUrl(raw) {
   }
 }
 
+function bindRun(el, run) {
+  el.setAttribute("aria-busy", "true");
+  Promise.resolve().then(run).catch((err) => { console.error("[Haven] connection-error action failed", err); el.removeAttribute("aria-busy"); });
+}
 function bindAction(el, run) {
-  if (!el) return;
-  el.addEventListener("click", (event) => {
-    event.preventDefault();
-    el.setAttribute("aria-busy", "true");
-    Promise.resolve()
-      .then(run)
-      .catch((err) => {
-        console.error("[Haven] connection-error action failed", err);
-        el.removeAttribute("aria-busy");
-      });
-  });
+  el?.addEventListener("click", (event) => { event.preventDefault(); bindRun(el, run); });
 }
 
 async function boot() {
@@ -57,87 +53,26 @@ async function boot() {
   }
 
   const urlEl = document.getElementById("error-url");
-  if (urlEl) {
-    urlEl.textContent = info.url || "";
-    urlEl.hidden = !info.url;
-  }
-
-  // Top Back Button
-  const backTop = document.getElementById("btn-back-top");
-  bindAction(backTop, () => invoke("nav_back_to_welcome"));
-
-  // Retry
+  urlEl.textContent = info.url || "";
+  urlEl.hidden = !info.url || msgEl.textContent.includes(info.url);
+  document.getElementById("back-top-text").textContent = t("connection.goBackWelcome") || "Go Back to Welcome";
+  bindAction(document.getElementById("btn-back-top"), () => invoke("nav_back_to_welcome"));
   const retry = document.getElementById("btn-retry");
-  if (retry) {
-    retry.textContent = t("welcome.tryAgain") || "Try Again";
-    bindAction(retry, () => invoke("nav_open_app", { serverUrl: info.url }));
-  }
-
-  // Pick a Different Server action button
-  const pickBtn = document.getElementById("btn-pick-server");
-  if (pickBtn) {
-    pickBtn.onclick = () => {
-      const section = document.getElementById("server-picker-section");
-      if (section) {
-        section.scrollIntoView({ behavior: "smooth" });
-        const input = document.getElementById("custom-server-url");
-        if (input) input.focus();
-      }
-    };
-  }
-
-  // Go to Welcome Screen
-  const welcome = document.getElementById("btn-welcome");
-  if (welcome) {
-    welcome.textContent = t("connection.goBackWelcome") || "Welcome Screen";
-    bindAction(welcome, () => invoke("nav_back_to_welcome"));
-  }
-
-  // Go Back to My Server (if primary server exists)
-  const backServer = document.getElementById("btn-back-server");
-  if (backServer && info.canGoBackServer && info.primary) {
-    backServer.hidden = false;
-    backServer.textContent = t("connection.goBackServer") || "Go Back to My Server";
-    bindAction(backServer, () => invoke("nav_switch_server", { serverUrl: info.primary }));
-  }
-
-  // Populate Server History & Picker
-  const recentList = document.getElementById("recent-servers-list");
+  retry.textContent = t("welcome.tryAgain") || "Try Again";
+  bindAction(retry, () => invoke("nav_open_app", { serverUrl: info.url }));
   const failedOrigin = normalizeUrl(info.url);
-
-  try {
-    const history = await invoke("server_history_get").catch(() => []);
-    const filtered = (history || []).filter((h) => {
-      const origin = normalizeUrl(h.url);
-      return origin && origin !== failedOrigin;
-    });
-
-    if (recentList) {
-      recentList.innerHTML = "";
-      if (filtered.length > 0) {
-        filtered.sort((a, b) => (b.lastConnected || 0) - (a.lastConnected || 0));
-        filtered.forEach((entry) => {
-          const item = document.createElement("div");
-          item.className = "recent-server-item";
-
-          let hostName = entry.url;
-          try { hostName = new URL(entry.url).hostname; } catch {}
-          const displayName = (entry.name && entry.name !== entry.url) ? entry.name : hostName;
-
-          const info = Object.assign(document.createElement("div"), { className: "recent-server-info" });
-          info.append(Object.assign(document.createElement("span"), { className: "recent-server-name", textContent: displayName }), Object.assign(document.createElement("span"), { className: "recent-server-url", textContent: entry.url }));
-          item.append(info, Object.assign(document.createElement("span"), { className: "recent-server-action", textContent: "Connect \u2192" }));
-          bindAction(item, () => invoke("nav_change_primary_server", { serverUrl: entry.url }));
-          recentList.appendChild(item);
-        });
-      } else {
-        recentList.style.display = "none";
-      }
-    }
-  } catch (err) {
-    console.warn("[Haven] Failed to load server history", err);
-  }
-
+  const backServer = document.getElementById("btn-back-server");
+  const canBack = info.canGoBackServer && info.primary && normalizeUrl(info.primary) !== failedOrigin;
+  backServer.hidden = !canBack;
+  backServer.textContent = t("connection.goBackServer") || "Go Back to My Server";
+  canBack && bindAction(backServer, () => invoke("nav_switch_server", { serverUrl: info.primary }));
+  document.getElementById("picker-title-text").textContent = t("serverPicker.switch") || "Switch Server";
+  document.getElementById("btn-connect-custom").textContent = t("serverPicker.connect") || "Connect";
+  const recentList = document.getElementById("recent-servers-list");
+  const history = await invoke("server_history_get").catch(() => []);
+  const filtered = (history || []).filter((h) => { const o = normalizeUrl(h.url); return o && o !== failedOrigin; });
+  recentList.hidden = !filtered.length;
+  renderServers(recentList, filtered, t, (entry, item) => bindRun(item, () => invoke("nav_change_primary_server", { serverUrl: entry.url })));
   // Custom Server Connect Form
   const form = document.getElementById("custom-server-form");
   const customInput = document.getElementById("custom-server-url");
@@ -146,13 +81,11 @@ async function boot() {
   if (form && customInput) {
     form.onsubmit = async (e) => {
       e.preventDefault();
-      if (customError) customError.style.display = "none";
+      customError.hidden = true;
       const cleaned = normalizeUrl(customInput.value);
       if (!cleaned) {
-        if (customError) {
-          customError.textContent = "Please enter a valid server URL (e.g. https://haven.example.com)";
-          customError.style.display = "block";
-        }
+        customError.textContent = t("welcome.error.invalidUrl");
+        customError.hidden = false;
         return;
       }
       try {
@@ -160,10 +93,8 @@ async function boot() {
         if (btn) btn.setAttribute("aria-busy", "true");
         await invoke("nav_change_primary_server", { serverUrl: cleaned });
       } catch (err) {
-        if (customError) {
-          customError.textContent = String(err?.message || err || "Could not connect to that server");
-          customError.style.display = "block";
-        }
+        customError.textContent = String(err?.message || err || t("serverPicker.error.connectionFailed"));
+        customError.hidden = false;
       }
     };
   }

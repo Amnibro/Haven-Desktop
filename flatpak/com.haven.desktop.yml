@@ -32,6 +32,12 @@ modules:
         path: com.haven.desktop.desktop
       - type: file
         path: com.haven.desktop.metainfo.xml
+      - type: file
+        path: ../assets/icon.svg
+      - type: file
+        path: ../src-tauri/icons/icon.png
+      - type: file
+        path: ../src-tauri/icons/64x64.png
     build-commands:
       - ar -x haven.deb
       - tar -xf data.tar.gz
@@ -39,5 +45,8 @@ modules:
       - install -Dm644 com.haven.desktop.desktop /app/share/applications/com.haven.desktop.desktop
       - install -Dm644 com.haven.desktop.metainfo.xml /app/share/metainfo/com.haven.desktop.metainfo.xml
       - install -Dm644 usr/share/icons/hicolor/32x32/apps/haven-desktop.png /app/share/icons/hicolor/32x32/apps/com.haven.desktop.png
+      - install -Dm644 64x64.png /app/share/icons/hicolor/64x64/apps/com.haven.desktop.png
       - install -Dm644 usr/share/icons/hicolor/128x128/apps/haven-desktop.png /app/share/icons/hicolor/128x128/apps/com.haven.desktop.png
       - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/haven-desktop.png /app/share/icons/hicolor/256x256/apps/com.haven.desktop.png
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/com.haven.desktop.png
+      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/com.haven.desktop.svg

@@ -2,8 +2,10 @@
 // Haven Desktop — Welcome Screen Logic
 // ═══════════════════════════════════════════════════════════
 
+import { renderServers, watchTheme } from './ui.js';
 (function () {
   'use strict';
+  watchTheme();
 
   const $ = (sel) => document.querySelector(sel);
   const pages = document.querySelectorAll('.page');
@@ -197,46 +199,9 @@
 
   async function loadRecentServers() {
     const section = $('#join-recent-section');
-    const list = $('#join-recent-list');
-    if (!section || !list) return;
-
-    try {
-      const history = await (window.haven?.server?.history?.get ? window.haven.server.history.get() : Promise.resolve([])).catch(() => []);
-      if (!history || !history.length) {
-        section.style.display = 'none';
-        return;
-      }
-      section.style.display = 'block';
-      list.innerHTML = '';
-      const sorted = [...history].sort((a, b) => (b.lastConnected || 0) - (a.lastConnected || 0));
-      sorted.forEach((entry) => {
-        const item = document.createElement('div');
-        item.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;transition:all .18s;font-size:12px;';
-        let hostName = entry.url;
-        try { hostName = new URL(entry.url).hostname; } catch {}
-        const name = (entry.name && entry.name !== entry.url) ? entry.name : hostName;
-        const info = document.createElement('div');
-        info.style.cssText = 'display:flex;flex-direction:column;gap:2px;overflow:hidden;text-align:left;';
-        const nameEl = Object.assign(document.createElement('span'), { textContent: name });
-        nameEl.style.cssText = 'font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-        const urlEl = Object.assign(document.createElement('span'), { textContent: entry.url });
-        urlEl.style.cssText = 'font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-        const go = Object.assign(document.createElement('span'), { textContent: 'Connect \u2192' });
-        go.style.cssText = 'color:var(--accent);font-weight:600;flex-shrink:0;margin-left:8px;';
-        info.append(nameEl, urlEl);
-        item.append(info, go);
-        item.onmouseenter = () => { item.style.borderColor = 'var(--accent)'; item.style.background = 'rgba(107, 79, 219, .12)'; };
-        item.onmouseleave = () => { item.style.borderColor = 'var(--border)'; item.style.background = 'var(--surface2)'; };
-        item.onclick = () => {
-          urlInput.value = entry.url;
-          connectBtn.disabled = false;
-          connectBtn.click();
-        };
-        list.appendChild(item);
-      });
-    } catch {
-      section.style.display = 'none';
-    }
+    const history = await window.haven.server.history.get().catch(() => []);
+    section.hidden = !history?.length;
+    history?.length && renderServers($('#join-recent-list'), history, t, (entry) => { urlInput.value = entry.url; connectBtn.disabled = false; connectBtn.click(); });
   }
 
   connectBtn.onclick = async () => {
