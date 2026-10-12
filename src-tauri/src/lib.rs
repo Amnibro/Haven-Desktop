@@ -1,4 +1,5 @@
 mod audio;
+mod cert_trust;
 mod commands;
 mod i18n;
 mod lowmem;
@@ -149,6 +150,7 @@ pub fn run() {
                 let (bg, fg) = theme_icon::stored(app.handle());
                 theme_icon::apply(app.handle(), bg, fg);
             }
+            cert_trust::migrate(app.handle());
             check_for_update(app.handle().clone());
             // Saved mute / deafen / push-to-talk keys were only registered when
             // the settings page re-saved them, so after a restart they did nothing.

@@ -22,6 +22,7 @@ pub struct AppState {
     pub returning_to_welcome: Mutex<bool>,
     pub list_gate: Mutex<ListGate>,
     pub list_gate_turn: tauri::async_runtime::Mutex<()>,
+    pub cert_questions: Mutex<HashSet<String>>,
 }
 #[derive(Default)]
 pub struct ListGate { pub asking: HashSet<String>, pub declined: HashSet<String>, pub blocked: HashSet<String>, pub waiting: usize }
@@ -42,6 +43,7 @@ impl Default for AppState {
             returning_to_welcome: Mutex::new(false),
             list_gate: Mutex::new(ListGate::default()),
             list_gate_turn: tauri::async_runtime::Mutex::new(()),
+            cert_questions: Mutex::new(HashSet::new()),
         }
     }
 }

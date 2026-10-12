@@ -39,16 +39,11 @@ extern "C" {
 pub fn accept_self_signed(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "linux")]
     {
-        use webkit2gtk::{SettingsExt, TLSErrorsPolicy, WebContextExt, WebViewExt};
-        let _ = window.with_webview(|w| {
-            if let Some(ctx) = w.inner().web_context() {
-                ctx.set_tls_errors_policy(TLSErrorsPolicy::Ignore);
-            }
-            // WebKitGTK ships with WebRTC and media capture switched off and
-            // wry never turns them on, so the page had no RTCPeerConnection
-            // and Haven's STUN probe reported every server dead. The setting
-            // only helps on a WebKit built with ENABLE_WEB_RTC (Amni OS
-            // rebuilds webkit2gtk-4.1 that way; stock Arch does not).
+        use webkit2gtk::{SettingsExt, WebViewExt};
+        let (app, label) = (window.app_handle().clone(), window.label().to_string());
+        let _ = window.with_webview(move |w| {
+            crate::cert_trust::attach(&w.inner(), app.clone(), label.clone());
+            let _ = (label == "main").then(|| crate::cert_trust::prewarm(&w.inner(), &app));
             if let Some(settings) = w.inner().settings() {
                 settings.set_enable_webrtc(true);
                 settings.set_enable_media_stream(true);
@@ -186,8 +181,15 @@ fn mark_connected(app: &AppHandle, url: &str) {
     crate::server_list::save(app, &current, &before);
 }
 pub fn open_app_window(app: &AppHandle, server_url: &str) -> Result<(), String> {
-    let normalized = state::normalize_server_url(server_url)
+    let asked = state::normalize_server_url(server_url)
         .ok_or_else(|| "invalid server URL".to_string())?;
+    let normalized = state::normalize_server_url(&crate::nav_fail::https_upgrade(&asked)).unwrap_or(asked.clone());
+    let mut prefs = state::get_user_prefs(app).unwrap_or_default();
+    let remembered = prefs.get("serverUrl").and_then(|v| v.as_str()).and_then(state::normalize_server_url);
+    if normalized != asked && remembered.as_deref() == Some(asked.as_str()) {
+        let _ = prefs.as_object_mut().map(|o| o.insert("serverUrl".into(), json!(normalized)));
+        let _ = state::set_value(app, "userPrefs", prefs);
+    }
     let app_url = state::build_server_app_url(&normalized);
     let parsed: Url = app_url.parse().map_err(|e: url::ParseError| e.to_string())?;
 

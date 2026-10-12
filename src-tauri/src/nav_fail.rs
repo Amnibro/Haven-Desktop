@@ -39,6 +39,20 @@ pub fn server_tcp_reachable_with_timeout(server_url: &str, timeout_ms: u64) -> b
 pub fn is_local_ui(url: &Url) -> bool {
     url.scheme() == "tauri" || matches!(url.host_str(), Some("tauri.localhost") | Some("tauri.localhost.")) || (cfg!(debug_assertions) && matches!(url.host_str(), Some("localhost") | Some("127.0.0.1")) && url.port() == Some(14370))
 }
+pub fn https_upgrade(server_url: &str) -> String {
+    use std::io::{Read, Write};
+    let Some(rest) = server_url.strip_prefix("http://") else { return server_url.to_string() };
+    let Ok(parsed) = Url::parse(server_url) else { return server_url.to_string() };
+    let (Some(host), Some(port)) = (parsed.host_str(), parsed.port_or_known_default()) else { return server_url.to_string() };
+    let addr = (host.trim_start_matches('[').trim_end_matches(']'), port).to_socket_addrs().ok().and_then(|mut a| a.next());
+    let Some(mut stream) = addr.and_then(|a| TcpStream::connect_timeout(&a, Duration::from_millis(3000)).ok()) else { return server_url.to_string() };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(3000)));
+    let _ = stream.write_all(format!("HEAD / HTTP/1.0\r\nHost: {host}\r\n\r\n").as_bytes());
+    let mut head = [0u8; 5];
+    let mut got = 0;
+    while got < head.len() { match stream.read(&mut head[got..]) { Ok(0) | Err(_) => break, Ok(n) => got += n } }
+    if got == head.len() && &head == b"HTTP/" { server_url.to_string() } else { format!("https://{rest}") }
+}
 pub fn is_desktop_asset_url(url: &Url) -> bool {
     if url.scheme() == "data" || url.scheme() == "tauri" {
         return true;
@@ -301,7 +315,7 @@ fn attach_webkit2(window: &WebviewWindow, app: AppHandle) {
         let view = w.inner();
         let app_handle = app.clone();
         view.connect_load_failed(move |_view, _event, uri, error| {
-            if error.matches(webkit2gtk::NetworkError::Cancelled) || error.matches(webkit2gtk::PolicyError::FrameLoadInterruptedByPolicyChange) || error.matches(webkit2gtk::PolicyError::CannotShowMimeType) {
+            if error.matches(webkit2gtk::NetworkError::Cancelled) || error.matches(gtk::gio::IOErrorEnum::Cancelled) || error.matches(webkit2gtk::PolicyError::FrameLoadInterruptedByPolicyChange) || error.matches(webkit2gtk::PolicyError::CannotShowMimeType) {
                 return false;
             }
             if let Ok(parsed) = Url::parse(uri) {
