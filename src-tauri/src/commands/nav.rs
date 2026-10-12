@@ -158,10 +158,21 @@ pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
         || history.iter().any(|k| same_origin(url, k))
     {
         SIGN_IN.store(url.path().starts_with("/api/auth/oidc/start"), Ordering::Relaxed);
+        let _ = cfg!(not(target_os = "linux")).then(|| *state.nav_inflight.lock() = Some(std::time::Instant::now()));
         return true;
     }
     if EMBED_ORIGINS.iter().any(|e| same_origin(url, e)) || (SIGN_IN.load(Ordering::Relaxed) && matches!(url.scheme(), "http" | "https")) {
         return true;
+    }
+    let redirect = state.nav_inflight.lock().map(|t| t.elapsed() < std::time::Duration::from_secs(30)).unwrap_or(false) && matches!(url.scheme(), "http" | "https");
+    if redirect && active.as_deref().and_then(|a| Url::parse(a).ok()).map(|a| a.host_str() == url.host_str()).unwrap_or(false) {
+        return true;
+    }
+    if redirect {
+        *state.nav_inflight.lock() = None;
+        let (app, target) = (app.clone(), url.clone());
+        std::thread::spawn(move || crate::nav_fail::redirected(&app, &target));
+        return false;
     }
     if url.scheme() == "http" || url.scheme() == "https" {
         let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
@@ -219,10 +230,13 @@ pub fn open_app_window(app: &AppHandle, server_url: &str) -> Result<(), String> 
 }
 
 fn show_or_create_connection_error(app: &AppHandle, server_url: &str) -> Result<(), String> {
+    let problem = crate::nav_fail::offline_problem();
     if app.get_webview_window("main").is_none() {
+        *app.state::<AppState>().net_problem.lock() = Some(problem.clone());
         create_main_window(app, WebviewUrl::App("connection-error.html".into()))?;
+        crate::nav_fail::watch_back(app, server_url);
     } else {
-        crate::nav_fail::show_connection_error(app, server_url);
+        crate::nav_fail::show_problem(app, server_url, problem);
     }
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.show();
@@ -369,6 +383,9 @@ fn handle_error_nav(app: &AppHandle, action: &str) {
             if let Some(url) = crate::nav_fail::other_server_url(&app) {
                 let _ = switch_server(&app, &url);
             }
+        }
+        "signin" => {
+            let _ = crate::nav_fail::sign_in_href(&app).map(|href| tauri_plugin_opener::open_url(href, None::<&str>));
         }
         _ => {}
     });

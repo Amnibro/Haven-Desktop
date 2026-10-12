@@ -4,6 +4,7 @@
 
 use crate::state::AppState;
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, WebviewWindow};
 use tauri::webview::{PageLoadEvent, PageLoadPayload};
@@ -208,16 +209,100 @@ fn connection_error_page_url(server_url: &str) -> Result<Url, String> {
     Url::parse(&format!("{}/connection-error.html?url={encoded}", app_origin())).map_err(|e| e.to_string())
 }
 
-pub fn show_connection_error(app: &AppHandle, server_url: &str) {
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[derive(Clone, Debug, PartialEq)]
+pub enum Problem { Down, Offline, Untrusted, Captive, Redirect { host: String, href: String } }
+pub const PORTAL_URL: &str = "http://connectivitycheck.gstatic.com/generate_204";
+static PROBLEM_GEN: AtomicU64 = AtomicU64::new(0);
+static QUIET: AtomicBool = AtomicBool::new(true);
+static RETRYING: AtomicBool = AtomicBool::new(false);
+static CONN: AtomicU8 = AtomicU8::new(4);
+static ONLINE: AtomicBool = AtomicBool::new(true);
+pub fn captive() -> bool { CONN.load(Ordering::Relaxed) == 3 }
+pub fn online() -> bool { ONLINE.load(Ordering::Relaxed) }
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn vpn_like(name: &str, kind: &str) -> bool { name != "lo" && (kind == "65534" || kind == "512" || ["tun", "tap", "wg", "ppp", "ipsec", "vpn", "utun", "nordlynx", "proton", "mullvad", "cscotun", "gpd", "zt"].iter().any(|p| name.starts_with(p))) }
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn vpn_active() -> bool {
+    let read = |p: std::path::PathBuf| std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default();
+    cfg!(target_os = "linux") && std::fs::read_dir("/sys/class/net").map(|d| d.flatten().any(|e| vpn_like(&e.file_name().to_string_lossy(), &read(e.path().join("type"))) && read(e.path().join("operstate")) != "down")).unwrap_or(false)
+}
+fn on_error_page(app: &AppHandle) -> bool { app.get_webview_window("main").and_then(|m| m.url().ok()).map(|c| c.path().contains("connection-error.html")).unwrap_or(false) }
+pub fn show_problem(app: &AppHandle, server_url: &str, p: Problem) {
     let Some(main) = app.get_webview_window("main") else { return };
-    if let Ok(current) = main.url() {
-        if current.path().contains("connection-error.html") {
-            return;
-        }
-    }
-    let Ok(url) = connection_error_page_url(server_url) else { return };
+    let changed = app.state::<AppState>().net_problem.lock().replace(p.clone()).as_ref() != Some(&p);
+    if !changed && on_error_page(app) { return }
+    PROBLEM_GEN.fetch_add(1, Ordering::Relaxed);
     *app.state::<AppState>().pending_server_load.lock() = None;
-    let _ = main.navigate(url);
+    *app.state::<AppState>().nav_inflight.lock() = None;
+    let _ = connection_error_page_url(server_url).map(|u| main.navigate(u));
+    let _ = (p == Problem::Offline).then(|| watch_back(app, server_url));
+}
+pub fn watch_back(app: &AppHandle, server_url: &str) {
+    let (app, url, generation) = (app.clone(), server_url.to_string(), PROBLEM_GEN.load(Ordering::Relaxed));
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(4));
+        let st = app.state::<AppState>();
+        if PROBLEM_GEN.load(Ordering::Relaxed) != generation || st.net_problem.lock().as_ref() != Some(&Problem::Offline) || st.active_server_url.lock().as_deref() != Some(url.as_str()) { return }
+        if online() && !captive() && server_tcp_reachable_with_timeout(&url, 2000) { let _ = crate::commands::open_app_window(&app, &url); return }
+    });
+}
+pub fn offline_problem() -> Problem { if captive() { Problem::Captive } else { Problem::Offline } }
+fn fail(app: &AppHandle, server_url: &str, quiet: bool) {
+    let (app, url) = (app.clone(), server_url.to_string());
+    std::thread::spawn(move || {
+        let quiet = quiet && QUIET.swap(false, Ordering::Relaxed);
+        if !quiet && RETRYING.load(Ordering::Relaxed) { return }
+        RETRYING.store(quiet, Ordering::Relaxed);
+        let back = (0..if quiet { 4 } else { 1 }).any(|i| { let _ = (i > 0).then(|| std::thread::sleep(Duration::from_secs(2))); !captive() && server_tcp_reachable_with_timeout(&url, 1500) });
+        RETRYING.store(false, Ordering::Relaxed);
+        match (back, quiet) { (true, true) => { let _ = crate::commands::open_app_window(&app, &url); } (true, false) => show_problem(&app, &url, Problem::Down), _ => show_problem(&app, &url, offline_problem()) }
+    });
+}
+pub fn show_connection_error(app: &AppHandle, server_url: &str) { fail(app, server_url, false) }
+pub fn connection_failed(app: &AppHandle, server_url: &str) { fail(app, server_url, true) }
+pub fn redirected(app: &AppHandle, target: &Url) {
+    let server = app.state::<AppState>().active_server_url.lock().clone().unwrap_or_default();
+    show_problem(app, &server, if captive() { Problem::Captive } else { Problem::Redirect { host: target.host_str().unwrap_or_default().to_string(), href: target.to_string() } });
+}
+pub fn page_ready(app: &AppHandle) {
+    QUIET.store(true, Ordering::Relaxed);
+    *app.state::<AppState>().net_problem.lock() = None;
+}
+pub fn sign_in_href(app: &AppHandle) -> Option<String> {
+    match app.state::<AppState>().net_problem.lock().clone()? { Problem::Redirect { href, .. } => Some(href), Problem::Captive => Some(PORTAL_URL.into()), _ => None }
+}
+#[cfg(target_os = "linux")]
+pub fn watch_network(app: &AppHandle) {
+    use gtk::gio::prelude::*;
+    use std::cell::Cell;
+    use std::rc::Rc;
+    let app = app.clone();
+    let _ = app.clone().run_on_main_thread(move || {
+        let mon = gtk::gio::NetworkMonitor::default();
+        let read = |m: &gtk::gio::NetworkMonitor| { CONN.store(match m.connectivity() { gtk::gio::NetworkConnectivity::Local => 1, gtk::gio::NetworkConnectivity::Limited => 2, gtk::gio::NetworkConnectivity::Portal => 3, _ => 4 }, Ordering::Relaxed); ONLINE.store(m.is_network_available(), Ordering::Relaxed) };
+        read(&mon);
+        let tick = Rc::new(Cell::new(0u64));
+        let changed: Rc<dyn Fn(&gtk::gio::NetworkMonitor)> = Rc::new(move |m| {
+            read(m);
+            let (t, tick, app) = (tick.get() + 1, tick.clone(), app.clone());
+            tick.set(t);
+            gtk::glib::timeout_add_local_once(Duration::from_millis(1500), move || { let _ = (tick.get() == t).then(|| network_changed(&app)); });
+        });
+        let c2 = changed.clone();
+        mon.connect_network_changed(move |m, _| changed(m));
+        mon.connect_connectivity_notify(move |m| c2(m));
+    });
+}
+#[cfg(target_os = "linux")]
+fn network_changed(app: &AppHandle) {
+    let Some(main) = app.get_webview_window("main").filter(|_| online() && !captive()) else { return };
+    let (problem, active) = { let st = app.state::<AppState>(); let p = st.net_problem.lock().clone(); let a = st.active_server_url.lock().clone(); (p, a) };
+    match (on_error_page(app), problem, active) {
+        (true, Some(p), Some(url)) if p != Problem::Untrusted => { let app = app.clone(); std::thread::spawn(move || { let _ = crate::commands::open_app_window(&app, &url); }); }
+        (false, _, Some(_)) => { let app = app.clone(); let _ = main.with_webview(move |w| crate::cert_trust::recheck(&w.inner(), &app)); }
+        _ => {}
+    }
 }
 
 fn mark_pending(app: &AppHandle, url: &Url) {
@@ -254,6 +339,7 @@ pub fn on_page_load(app: &AppHandle, payload: &PageLoadPayload<'_>) {
     }
     match payload.event() {
         PageLoadEvent::Started => {
+            *app.state::<AppState>().nav_inflight.lock() = None;
             if looks_like_browser_error(url) {
                 return;
             }
@@ -265,6 +351,7 @@ pub fn on_page_load(app: &AppHandle, payload: &PageLoadPayload<'_>) {
         }
         PageLoadEvent::Finished => {
             *app.state::<AppState>().pending_loading.lock() = false;
+            *app.state::<AppState>().nav_inflight.lock() = None;
             if looks_like_browser_error(url) {
                 let failed = app
                     .state::<AppState>()
@@ -272,25 +359,39 @@ pub fn on_page_load(app: &AppHandle, payload: &PageLoadPayload<'_>) {
                     .lock()
                     .clone()
                     .unwrap_or_else(|| url.to_string());
-                show_connection_error(app, &failed);
+                connection_failed(app, &failed);
             }
         }
     }
 }
 
 #[tauri::command]
-pub fn nav_page_ready(app: AppHandle) {
+pub fn nav_page_ready(app: AppHandle, webview: tauri::Webview) {
     clear_pending(&app);
+    *app.state::<AppState>().nav_inflight.lock() = None;
+    let _ = webview.url().ok().filter(|u| webview.label() == "main" && !is_desktop_asset_url(u)).map(|_| page_ready(&app));
 }
 
 #[tauri::command]
 pub fn nav_connection_info(app: AppHandle, state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
     let failed = state.active_server_url.lock().clone().unwrap_or_default();
     let back = other_server_url(&app).unwrap_or_default();
+    let t = |k: &str| crate::state::t(&app, k);
+    let (title, message, open, note) = match state.net_problem.lock().clone() {
+        Some(Problem::Captive) => (t("net.captiveTitle"), t("net.captiveBody"), t("net.openSignIn"), String::new()),
+        Some(Problem::Redirect { host, .. }) => (t("net.redirectTitle"), crate::state::tv(&app, "net.redirectBody", &[("host", &host)]), t("net.openSignIn"), String::new()),
+        Some(Problem::Untrusted) => (String::new(), t("net.untrustedBody"), String::new(), String::new()),
+        Some(Problem::Offline) => (String::new(), String::new(), String::new(), t("net.autoRetry")),
+        _ => Default::default(),
+    };
     Ok(serde_json::json!({
         "url": failed,
         "primary": back,
         "canGoBackServer": !back.is_empty(),
+        "title": title,
+        "message": message,
+        "openLabel": open,
+        "note": note,
     }))
 }
 
@@ -324,11 +425,15 @@ fn attach_webkit2(window: &WebviewWindow, app: AppHandle) {
                 .lock()
                 .clone()
                 .unwrap_or_else(|| uri.to_string());
-            let app_main = app_handle.clone();
-            let _ = app_handle.run_on_main_thread(move || {
-                show_connection_error(&app_main, &failed);
-            });
+            connection_failed(&app_handle, &failed);
             true
+        });
+        let inflight = app.clone();
+        view.connect_load_changed(move |view, event| {
+            let local = view.uri().and_then(|u| Url::parse(&u).ok()).map(|u| is_desktop_asset_url(&u)).unwrap_or(true);
+            let st = inflight.state::<AppState>();
+            let mut slot = st.nav_inflight.lock();
+            *slot = match event { webkit2gtk::LoadEvent::Started if !local => Some(std::time::Instant::now()), webkit2gtk::LoadEvent::Redirected => *slot, _ => None };
         });
     });
 }
@@ -362,10 +467,7 @@ fn attach_webview2(window: &WebviewWindow, app: AppHandle) {
             if failed.is_empty() {
                 return Ok(());
             }
-            let app = app.clone();
-            let _ = app.clone().run_on_main_thread(move || {
-                show_connection_error(&app, &failed);
-            });
+            connection_failed(&app, &failed);
             Ok(())
         }));
         let mut token = 0;
@@ -403,6 +505,11 @@ mod tests {
         assert!(looks_like_browser_error(&url));
     }
 
+    #[test]
+    fn vpn_interfaces() {
+        for (n, t) in [("nordlynx", "65534"), ("wg0", "65534"), ("tun0", "65534"), ("ppp0", "512"), ("tailscale0", "65534"), ("utun3", "1"), ("tap0", "1")] { assert!(vpn_like(n, t), "{n}") }
+        for (n, t) in [("lo", "772"), ("enp8s0", "1"), ("wlan0", "1"), ("docker0", "1"), ("virbr0", "1")] { assert!(!vpn_like(n, t), "{n}") }
+    }
     #[test]
     fn closed_port_is_unreachable() {
         assert!(!server_tcp_reachable("http://127.0.0.1:1"));

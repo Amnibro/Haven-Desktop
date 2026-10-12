@@ -44,13 +44,16 @@ async function boot() {
   if (!info.url) info.url = paramsUrl();
 
   const titleEl = document.getElementById("error-title");
-  if (titleEl) titleEl.textContent = t("connection.problemTitle") || "Connection Problem";
+  if (titleEl) titleEl.textContent = info.title || t("connection.problemTitle") || "Connection Problem";
 
   const msgEl = document.getElementById("error-message");
   if (msgEl) {
-    msgEl.textContent = t("connection.problemMessage", { url: info.url || "" }) ||
-      "Haven couldn't load that server. It may be down, the address may be wrong, or the network dropped.";
+    msgEl.textContent = (info.message || t("connection.problemMessage", { url: info.url || "" }) ||
+      "Haven couldn't load that server. It may be down, the address may be wrong, or the network dropped.") + (info.note ? "\n\n" + info.note : "");
   }
+  const signIn = document.getElementById("btn-open-signin");
+  signIn.hidden = !info.openLabel;
+  signIn.textContent = info.openLabel || "";
 
   const urlEl = document.getElementById("error-url");
   urlEl.textContent = info.url || "";

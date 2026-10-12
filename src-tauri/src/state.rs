@@ -25,6 +25,8 @@ pub struct AppState {
     pub list_gate: Mutex<ListGate>,
     pub list_gate_turn: tauri::async_runtime::Mutex<()>,
     pub cert_questions: Mutex<HashSet<String>>,
+    pub net_problem: Mutex<Option<crate::nav_fail::Problem>>,
+    pub nav_inflight: Mutex<Option<std::time::Instant>>,
     pub update: Mutex<crate::updates::UpdateState>,
 }
 #[derive(Default)]
@@ -49,6 +51,8 @@ impl Default for AppState {
             list_gate: Mutex::new(ListGate::default()),
             list_gate_turn: tauri::async_runtime::Mutex::new(()),
             cert_questions: Mutex::new(HashSet::new()),
+            net_problem: Mutex::new(None),
+            nav_inflight: Mutex::new(None),
             update: Mutex::new(Default::default()),
         }
     }

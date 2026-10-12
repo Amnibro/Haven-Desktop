@@ -1,4 +1,5 @@
 mod audio;
+#[cfg_attr(not(target_os = "linux"), allow(dead_code, unused_imports))]
 mod cert_trust;
 mod commands;
 mod i18n;
@@ -123,6 +124,9 @@ pub fn run() {
                 theme_icon::apply(app.handle(), bg, fg);
             }
             cert_trust::migrate(app.handle());
+            cert_trust::init(app.handle());
+            #[cfg(target_os = "linux")]
+            nav_fail::watch_network(app.handle());
             updates::start(app.handle().clone());
             // Saved mute / deafen / push-to-talk keys were only registered when
             // the settings page re-saved them, so after a restart they did nothing.

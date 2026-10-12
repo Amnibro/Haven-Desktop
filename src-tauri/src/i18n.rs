@@ -111,6 +111,21 @@ const EN: &[(&str, &str)] = &[
     ("cert.expires", "Valid until: {value}"),
     ("cert.trust", "Trust this certificate"),
     ("cert.trustNew", "Trust the new certificate"),
+    ("cert.vpnTitle", "Your VPN is presenting its own certificate"),
+    ("cert.networkTitle", "This network is presenting its own certificate"),
+    ("cert.certFor", "Haven got a certificate for {host} issued by {issuer} instead of the usual one. Trust it to keep using Haven on this connection."),
+    ("cert.vpnTip", "If your VPN has threat protection or a web filter, allow {host} there, or exclude Haven from the VPN."),
+    ("cert.keyChanged", "This is different from the certificate you trusted before."),
+    ("cert.details", "Details"),
+    ("cert.issuedTo", "Issued to: {value}"),
+    ("cert.valid", "Valid: {from} to {to}"),
+    ("net.redirectTitle", "Haven was redirected"),
+    ("net.redirectBody", "Your network or VPN redirected Haven to {host}. It may need you to sign in or allow this site."),
+    ("net.openSignIn", "Open sign-in page"),
+    ("net.captiveTitle", "Sign in to this Wi-Fi to continue"),
+    ("net.captiveBody", "This Wi-Fi needs you to sign in before Haven can connect. Haven reconnects by itself once you're signed in."),
+    ("net.autoRetry", "Haven tries again by itself when the connection comes back."),
+    ("net.untrustedBody", "Haven didn't connect because the certificate wasn't trusted. Try again to see the question again."),
     ("audio.unknownApplication", "Unknown"),
 ];
 
@@ -148,6 +163,32 @@ const PT_BR: &[(&str, &str)] = &[
     ("update.upToDate", "Você já está na versão mais recente, Haven Desktop v{version}."),
     ("update.notPackaged", "A verificação de atualizações só funciona no aplicativo instalado."),
     ("menu.checkForUpdates", "Verificar atualizações"),
+    ("cert.title", "Verificação de certificado"),
+    ("cert.unknownMessage", "{host} usa um certificado que seu computador não consegue verificar."),
+    ("cert.unknownDetail", "Isso é normal em um servidor Haven que criou o próprio certificado. Confie nele só se for um servidor que você conhece, porque em uma rede compartilhada alguém pode estar se passando por ele. O Haven lembra sua resposta e pergunta de novo se o certificado mudar."),
+    ("cert.changedMessage", "O certificado de {host} mudou."),
+    ("cert.changedDetail", "Isso acontece quando um servidor recebe um certificado novo, mas também pode significar que alguém está interceptando sua conexão. Confie no novo só se quem administra o servidor disser que ele mudou."),
+    ("cert.fingerprint", "Impressão digital: {value}"),
+    ("cert.previousFingerprint", "Impressão digital anterior: {value}"),
+    ("cert.issuer", "Emitido por: {value}"),
+    ("cert.expires", "Válido até: {value}"),
+    ("cert.trust", "Confiar neste certificado"),
+    ("cert.trustNew", "Confiar no novo certificado"),
+    ("cert.vpnTitle", "Sua VPN está apresentando o próprio certificado"),
+    ("cert.networkTitle", "Esta rede está apresentando o próprio certificado"),
+    ("cert.certFor", "O Haven recebeu para {host} um certificado emitido por {issuer} em vez do habitual. Confie nele para continuar usando o Haven nesta conexão."),
+    ("cert.vpnTip", "Se a sua VPN tiver proteção contra ameaças ou filtro web, permita {host} nela ou exclua o Haven da VPN."),
+    ("cert.keyChanged", "Ele é diferente do certificado em que você confiou antes."),
+    ("cert.details", "Detalhes"),
+    ("cert.issuedTo", "Emitido para: {value}"),
+    ("cert.valid", "Válido de: {from} a {to}"),
+    ("net.redirectTitle", "O Haven foi redirecionado"),
+    ("net.redirectBody", "Sua rede ou VPN redirecionou o Haven para {host}. Talvez você precise fazer login ou permitir este site."),
+    ("net.openSignIn", "Abrir página de login"),
+    ("net.captiveTitle", "Faça login neste Wi-Fi para continuar"),
+    ("net.captiveBody", "Este Wi-Fi pede login antes que o Haven possa se conectar. O Haven se reconecta sozinho quando você fizer login."),
+    ("net.autoRetry", "O Haven tenta de novo sozinho quando a conexão voltar."),
+    ("net.untrustedBody", "O Haven não se conectou porque o certificado não foi aceito. Tente de novo para ver a pergunta outra vez."),
 ];
 
 fn lookup(locale: &str, key: &str) -> Option<&'static str> {
@@ -246,5 +287,16 @@ pub fn build_state(
         is_preference_stored,
         direction,
         supported_locales: supported_locales(),
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn network_and_certificate_strings_are_translated() {
+        for (k, _) in EN.iter().filter(|(k, _)| k.starts_with("cert.") || k.starts_with("net.")) { assert!(PT_BR.iter().any(|(p, _)| p == k), "{k}") }
+        let v: HashMap<String, String> = [("host".to_string(), "h.example".to_string()), ("issuer".to_string(), "Acme".to_string())].into();
+        assert_eq!(translate("pt-BR", "net.redirectBody", &v), "Sua rede ou VPN redirecionou o Haven para h.example. Talvez você precise fazer login ou permitir este site.");
+        assert!(translate("en", "cert.certFor", &v).contains("h.example issued by Acme"));
     }
 }
