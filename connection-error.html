@@ -6,184 +6,19 @@
   <title>Haven</title>
   <link rel="stylesheet" href="/src/welcome.css">
   <style>
-    body {
-      overflow-y: auto;
-      height: 100vh;
-      background: var(--bg);
-    }
-    .error-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      padding: 24px 20px 48px;
-      box-sizing: border-box;
-    }
-    .error-topbar {
-      width: 100%;
-      max-width: 540px;
-      display: flex;
-      justify-content: flex-start;
-      margin-bottom: 16px;
-    }
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 14px;
-      width: 100%;
-      max-width: 540px;
-    }
-    .hex-logo {
-      font-size: 48px;
-      line-height: 1;
-      color: var(--accent);
-      animation: pulse 1.6s ease-in-out infinite;
-    }
-    h1 {
-      font-size: 22px;
-      font-weight: 700;
-      margin: 0;
-    }
-    p.error-desc {
-      max-width: 440px;
-      color: var(--text-dim);
-      font-size: 14px;
-      line-height: 1.5;
-      margin: 0;
-      white-space: pre-wrap;
-    }
-    code#error-url {
-      display: inline-block;
-      max-width: 100%;
-      overflow-wrap: anywhere;
-      padding: 6px 12px;
-      border-radius: 6px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 13px;
-    }
-    .error-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: center;
-      margin-top: 6px;
-    }
-    a.btn, button.btn {
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-family: inherit;
-    }
-    .server-picker-section {
-      width: 100%;
-      max-width: 540px;
-      margin-top: 24px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px;
-      box-sizing: border-box;
-      text-align: left;
-    }
-    .server-picker-title {
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-dim);
-      margin-bottom: 12px;
-    }
-    .recent-servers-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-height: 220px;
-      overflow-y: auto;
-      margin-bottom: 14px;
-    }
-    .recent-server-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 10px 14px;
-      border-radius: 6px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      cursor: pointer;
-      transition: all 0.18s ease;
-    }
-    .recent-server-item:hover {
-      border-color: var(--accent);
-      background: rgba(107, 79, 219, 0.12);
-      transform: translateY(-1px);
-    }
-    .recent-server-info {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      overflow: hidden;
-    }
-    .recent-server-name {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .recent-server-url {
-      font-size: 11px;
-      color: var(--text-dim);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .recent-server-action {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--accent);
-      flex-shrink: 0;
-    }
-    .custom-server-form {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .custom-server-form input {
-      flex: 1;
-      padding: 9px 12px;
-      border-radius: 6px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 13px;
-      outline: none;
-    }
-    .custom-server-form input:focus {
-      border-color: var(--accent);
-    }
-    .custom-server-form button {
-      padding: 9px 18px;
-      font-size: 13px;
-      white-space: nowrap;
-    }
-    .picker-error {
-      color: var(--danger);
-      font-size: 12px;
-      margin-top: 8px;
-      display: none;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 0.6; transform: scale(0.96); }
-      50% { opacity: 1; transform: scale(1.04); }
-    }
+    body{overflow-y:auto}
+    .error-container{flex:1 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:56px 20px 40px}
+    .error-topbar{position:absolute;top:16px;inset-inline-start:24px}
+    .error-card{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;width:100%;max-width:540px}
+    .error-card .hex-logo{font-size:48px;margin:0;animation:pulse 1.6s ease-in-out infinite}
+    .error-card h1{font-size:22px;font-weight:700}
+    .error-desc{max-width:440px;color:var(--text-dim);font-size:14px;line-height:1.5;white-space:pre-wrap}
+    #error-url{display:inline-block;max-width:100%;overflow-wrap:anywhere;padding:6px 12px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);font-size:13px}
+    .error-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:6px}
+    .server-picker-section{width:100%;max-width:540px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px 20px}
+    .server-picker-section .recent-servers-list{margin-bottom:12px}
+    .picker-error{color:var(--danger);font-size:12px;margin-top:8px}
+    @keyframes pulse{0%,100%{opacity:.6;transform:scale(.96)}50%{opacity:1;transform:scale(1.04)}}
   </style>
 </head>
 <body>
@@ -191,29 +26,25 @@
     <header class="error-topbar">
       <button class="back-btn" id="btn-back-top">← <span id="back-top-text">Back to Server Selection</span></button>
     </header>
-
     <div class="error-card">
       <div class="hex-logo" aria-hidden="true">⬡</div>
       <h1 id="error-title">Connection Problem</h1>
       <p class="error-desc" id="error-message">Haven couldn't load that server.</p>
-      <code id="error-url"></code>
+      <code id="error-url" hidden></code>
       <div class="error-actions">
         <a class="btn primary" id="btn-retry" href="/__haven_nav__/retry">Try Again</a>
-        <button class="btn secondary" id="btn-pick-server">Pick a Different Server</button>
         <a class="btn secondary" id="btn-back-server" hidden href="/__haven_nav__/server">Go Back to My Server</a>
-        <a class="btn secondary" id="btn-welcome" href="/__haven_nav__/welcome">Welcome Screen</a>
       </div>
     </div>
-
-    <div class="server-picker-section" id="server-picker-section">
-      <div class="server-picker-title" id="picker-title-text">Pick a Different Server</div>
-      <div class="recent-servers-list" id="recent-servers-list"></div>
+    <section class="server-picker-section" id="server-picker-section">
+      <div class="recent-title" id="picker-title-text">Pick a Different Server</div>
+      <div class="recent-servers-list" id="recent-servers-list" hidden></div>
       <form class="custom-server-form" id="custom-server-form">
         <input type="text" id="custom-server-url" placeholder="https://haven.example.com" spellcheck="false" autocomplete="off">
         <button type="submit" class="btn primary" id="btn-connect-custom">Connect</button>
       </form>
-      <div class="picker-error" id="custom-server-error"></div>
-    </div>
+      <div class="picker-error" id="custom-server-error" hidden></div>
+    </section>
   </div>
   <script type="module" src="/src/connection-error.js"></script>
 </body>

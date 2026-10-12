@@ -48,14 +48,14 @@
         position: fixed !important;
         top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
         width: 100vw !important; height: 100vh !important;
-        background: #0d0d1a !important;
+        background: var(--hdl-bg, #0d0d1a) !important;
         z-index: 2147483647 !important;
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
         justify-content: center !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-        color: #e0e0e0 !important;
+        color: var(--hdl-text, #e0e0e0) !important;
         user-select: none !important;
         pointer-events: all !important;
         opacity: 1 !important;
@@ -78,36 +78,36 @@
       .hdl-hex {
         font-size: 54px;
         line-height: 1;
-        color: #8b6ce7;
+        color: var(--hdl-accent, #8b6ce7);
         animation: hdlPulse 1.6s ease-in-out infinite;
       }
       .hdl-title {
         font-size: 20px;
         font-weight: 700;
         letter-spacing: 0.02em;
-        color: #fff;
+        color: var(--hdl-text, #fff);
         margin: 0;
       }
       .hdl-spinner {
         width: 26px;
         height: 26px;
-        border: 2.5px solid rgba(139, 108, 231, 0.22);
-        border-top-color: #8b6ce7;
+        border: 2.5px solid color-mix(in srgb, var(--hdl-accent, #8b6ce7) 22%, transparent);
+        border-top-color: var(--hdl-accent, #8b6ce7);
         border-radius: 50%;
         animation: hdlSpin 0.75s linear infinite;
       }
       .hdl-status {
         font-size: 13px;
-        color: #9a96b0;
+        color: var(--hdl-muted, #9a96b0);
         margin: 0;
         min-height: 18px;
         transition: color 0.2s ease;
       }
       .hdl-back-btn {
         margin-top: 10px;
-        background: #1a1a34;
-        color: #e0e0e0;
-        border: 1px solid #2a2a50;
+        background: color-mix(in srgb, var(--hdl-bg, #0d0d1a) 88%, var(--hdl-accent, #8b6ce7));
+        color: var(--hdl-text, #e0e0e0);
+        border: 1px solid color-mix(in srgb, var(--hdl-bg, #0d0d1a) 74%, var(--hdl-accent, #8b6ce7));
         border-radius: 6px;
         padding: 8px 16px;
         font-size: 13px;
@@ -116,9 +116,9 @@
         transition: all 0.2s ease;
       }
       .hdl-back-btn:hover {
-        background: #2a2a50;
-        border-color: #6b4fdb;
-        color: #fff;
+        background: color-mix(in srgb, var(--hdl-bg, #0d0d1a) 74%, var(--hdl-accent, #8b6ce7));
+        border-color: var(--hdl-accent, #6b4fdb);
+        color: var(--hdl-text, #fff);
       }
       @keyframes hdlPulse {
         0%, 100% { opacity: 0.55; transform: scale(0.96); }
@@ -131,6 +131,7 @@
 
     const overlay = document.createElement('div');
     overlay.id = 'haven-desktop-loading-overlay';
+    try { const c = JSON.parse(localStorage.getItem('haven-desktop-colors') || '{}'); [['bg', c.bg], ['accent', c.accent], ['text', c.text], ['muted', c.muted]].forEach(([k, v]) => v && overlay.style.setProperty('--hdl-' + k, v)); } catch {}
     overlay.innerHTML = `
       <div class="hdl-container">
         <div class="hdl-hex" aria-hidden="true">⬡</div>
@@ -808,6 +809,7 @@
       if (key === lastTheme) return;
       lastTheme = key;
       invoke('theme_colors', { theme, bg, accent }).catch(() => {});
+      bg && accent && localStorage.setItem('haven-desktop-colors', JSON.stringify({ bg, accent, text: (cs.getPropertyValue('--text-primary') || '').trim(), muted: (cs.getPropertyValue('--text-muted') || '').trim() }));
     } catch {}
   }
   // Init scripts run before the document has a root; observing null throws
@@ -842,7 +844,8 @@
       + 'html[data-braid-layout="1"][data-desktop-app] #status-bar{display:none!important;height:0!important;min-height:0!important;padding:0!important;border:0!important;overflow:hidden!important}'
       + 'html[data-braid-layout="1"].braid-status-open[data-desktop-app] .status-bar,'
       + 'html[data-braid-layout="1"].braid-status-open[data-desktop-app] #status-bar{display:flex!important;height:auto!important;min-height:1.75rem!important;padding:.3125rem 1rem!important;overflow:visible!important}'
-      + 'html[data-braid-layout="1"] #app-body{flex:1 1 auto!important;height:auto!important;min-height:0}';
+      + 'html[data-braid-layout="1"] #app-body{flex:1 1 auto!important;height:auto!important;min-height:0}'
+      + '#pref-force-sdr-row,#pref-disable-gpu-vsync-row,#pref-unlimit-frame-rate-row,#section-desktop-app .desktop-pref-row:has(#pref-hide-menu-bar){display:none!important}';
     (document.head || document.documentElement).appendChild(el);
   }
   if (document.head) injectBraidDesktopCss();
