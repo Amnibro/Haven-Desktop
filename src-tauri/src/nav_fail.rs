@@ -218,15 +218,52 @@ static QUIET: AtomicBool = AtomicBool::new(true);
 static RETRYING: AtomicBool = AtomicBool::new(false);
 static CONN: AtomicU8 = AtomicU8::new(4);
 static ONLINE: AtomicBool = AtomicBool::new(true);
+#[cfg_attr(not(windows), allow(dead_code))]
+pub static CERT_CANCELLED: AtomicBool = AtomicBool::new(false);
 pub fn captive() -> bool { CONN.load(Ordering::Relaxed) == 3 }
 pub fn online() -> bool { ONLINE.load(Ordering::Relaxed) }
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg_attr(windows, allow(dead_code))]
 pub fn vpn_like(name: &str, kind: &str) -> bool { name != "lo" && (kind == "65534" || kind == "512" || ["tun", "tap", "wg", "ppp", "ipsec", "vpn", "utun", "nordlynx", "proton", "mullvad", "cscotun", "gpd", "zt"].iter().any(|p| name.starts_with(p))) }
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn vpn_adapter(if_type: u32, text: &str) -> bool {
+    let t = text.to_lowercase();
+    !["teredo", "isatap", "6to4", "ip-https", "loopback", "hyper-v", "virtualbox", "vmware"].iter().any(|s| t.contains(s)) && (if_type == 23 || ["vpn", "wireguard", "wintun", "tap-", "nordlynx", "openvpn", "anyconnect", "pangp", "globalprotect", "fortinet", "forticlient", "zerotier", "tailscale", "mullvad", "proton", "juniper", "pulse secure", "sonicwall", "warp", "zscaler"].iter().any(|s| t.contains(s)))
+}
+#[cfg(target_os = "linux")]
 pub fn vpn_active() -> bool {
     let read = |p: std::path::PathBuf| std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default();
-    cfg!(target_os = "linux") && std::fs::read_dir("/sys/class/net").map(|d| d.flatten().any(|e| vpn_like(&e.file_name().to_string_lossy(), &read(e.path().join("type"))) && read(e.path().join("operstate")) != "down")).unwrap_or(false)
+    std::fs::read_dir("/sys/class/net").map(|d| d.flatten().any(|e| vpn_like(&e.file_name().to_string_lossy(), &read(e.path().join("type"))) && read(e.path().join("operstate")) != "down")).unwrap_or(false)
 }
+#[cfg(windows)]
+pub fn vpn_active() -> bool {
+    use windows_sys::Win32::NetworkManagement::IpHelper::{GetAdaptersAddresses, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER, GAA_FLAG_SKIP_MULTICAST, IP_ADAPTER_ADDRESSES_LH};
+    let wide = |p: *mut u16| if p.is_null() { String::new() } else { unsafe { String::from_utf16_lossy(std::slice::from_raw_parts(p, (0..).take_while(|&i| *p.add(i) != 0).count())) } };
+    let (mut size, mut buf) = (32768u32, Vec::<u64>::new());
+    let flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+    let ok = (0..3).any(|_| { buf = vec![0u64; size as usize / 8 + 1]; unsafe { GetAdaptersAddresses(0, flags, std::ptr::null(), buf.as_mut_ptr() as *mut IP_ADAPTER_ADDRESSES_LH, &mut size) == 0 } });
+    let mut p = if ok { buf.as_ptr() as *const IP_ADAPTER_ADDRESSES_LH } else { std::ptr::null() };
+    let mut found = false;
+    while let Some(a) = unsafe { p.as_ref() } {
+        found |= a.OperStatus == 1 && vpn_adapter(a.IfType, &format!("{} {}", wide(a.Description), wide(a.FriendlyName)));
+        p = a.Next;
+    }
+    found
+}
+#[cfg(target_os = "macos")]
+pub fn vpn_active() -> bool {
+    extern "C" {
+        fn haven_macos_ipv4_interfaces(found: extern "C" fn(*const std::ffi::c_char, *mut std::ffi::c_void), user: *mut std::ffi::c_void);
+    }
+    extern "C" fn each(name: *const std::ffi::c_char, user: *mut std::ffi::c_void) {
+        let name = unsafe { std::ffi::CStr::from_ptr(name) }.to_string_lossy();
+        unsafe { *(user as *mut bool) |= vpn_like(&name, "") }
+    }
+    let mut found = false;
+    unsafe { haven_macos_ipv4_interfaces(each, &mut found as *mut bool as *mut std::ffi::c_void) };
+    found
+}
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+pub fn vpn_active() -> bool { false }
 fn on_error_page(app: &AppHandle) -> bool { app.get_webview_window("main").and_then(|m| m.url().ok()).map(|c| c.path().contains("connection-error.html")).unwrap_or(false) }
 pub fn show_problem(app: &AppHandle, server_url: &str, p: Problem) {
     let Some(main) = app.get_webview_window("main") else { return };
@@ -455,7 +492,10 @@ fn attach_webview2(window: &WebviewWindow, app: AppHandle) {
             }
             let mut status = Default::default();
             let _ = args.WebErrorStatus(&mut status);
-            if status == COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED {
+            // Certificate failures are cert_trust's: it asks, or shows the
+            // redirect / untrusted page, instead of "server is down". A load
+            // it cancelled ends as an aborted connection, not a cert error.
+            if status == COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED || (1..=5).contains(&status.0) || CERT_CANCELLED.swap(false, Ordering::Relaxed) {
                 return Ok(());
             }
             let failed = app
@@ -509,6 +549,11 @@ mod tests {
     fn vpn_interfaces() {
         for (n, t) in [("nordlynx", "65534"), ("wg0", "65534"), ("tun0", "65534"), ("ppp0", "512"), ("tailscale0", "65534"), ("utun3", "1"), ("tap0", "1")] { assert!(vpn_like(n, t), "{n}") }
         for (n, t) in [("lo", "772"), ("enp8s0", "1"), ("wlan0", "1"), ("docker0", "1"), ("virbr0", "1")] { assert!(!vpn_like(n, t), "{n}") }
+    }
+    #[test]
+    fn vpn_adapters() {
+        for (t, d) in [(53, "WireGuard Tunnel wg0"), (53, "Wintun Userspace Tunnel Tailscale"), (6, "TAP-Windows Adapter V9 Ethernet 3"), (53, "NordLynx Tunnel NordLynx"), (23, "WAN Miniport (PPTP) Work"), (6, "PANGP Virtual Ethernet Adapter Ethernet 2"), (6, "Cisco AnyConnect Secure Mobility Client Virtual Miniport Adapter for Windows x64 Ethernet 4")] { assert!(vpn_adapter(t, d), "{d}") }
+        for (t, d) in [(6, "Intel(R) Ethernet Controller I225-V Ethernet"), (71, "Intel(R) Wi-Fi 6E AX211 160MHz Wi-Fi"), (131, "Teredo Tunneling Pseudo-Interface"), (24, "Software Loopback Interface 1"), (6, "Hyper-V Virtual Ethernet Adapter vEthernet (Default Switch)"), (131, "Microsoft ISATAP Adapter")] { assert!(!vpn_adapter(t, d), "{d}") }
     }
     #[test]
     fn closed_port_is_unreachable() {

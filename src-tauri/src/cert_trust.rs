@@ -49,14 +49,50 @@ fn tlv(d: &[u8], i: usize) -> Option<(u8, usize, usize)> {
     let s = i + 2 + n;
     (l0 != 0x80 && n <= 4 && s.checked_add(len)? <= d.len()).then_some((t, s, s + len))
 }
-pub fn cert_parts(der: &[u8]) -> Option<(&[u8], &[u8], &[u8])> {
+fn tbs(der: &[u8]) -> Option<Vec<&[u8]>> {
     let (_, cs, _) = tlv(der, 0)?;
     let (_, ts, te) = tlv(der, cs)?;
     let (mut f, mut i) = (Vec::new(), ts);
     while i < te && f.len() < 7 { let (t, _, e) = tlv(der, i)?; f.push((t, i, e)); i = e }
     let f = if f.first()?.0 == 0xa0 { &f[1..] } else { &f[..] };
-    let g = |k: usize| f.get(k).map(|&(_, s, e)| &der[s..e]);
-    Some((g(2)?, g(4)?, g(5)?))
+    Some(f.iter().map(|&(_, s, e)| &der[s..e]).collect())
+}
+pub fn cert_parts(der: &[u8]) -> Option<(&[u8], &[u8], &[u8])> { let f = tbs(der)?; Some((f.get(2)?, f.get(4)?, f.get(5)?)) }
+fn kids(d: &[u8]) -> Vec<&[u8]> {
+    let Some((_, s, e)) = tlv(d, 0) else { return vec![] };
+    std::iter::successors(Some(s), |&i| tlv(d, i).map(|(_, _, end)| end)).take_while(|&i| i < e).filter_map(|i| tlv(d, i).map(|(_, _, end)| &d[i..end])).collect()
+}
+fn body(d: &[u8]) -> Option<(u8, &[u8])> { tlv(d, 0).map(|(t, s, e)| (t, &d[s..e])) }
+fn oid_name(o: &[u8]) -> String {
+    match o {
+        [0x55, 4, 3] => "CN".into(), [0x55, 4, 6] => "C".into(), [0x55, 4, 7] => "L".into(), [0x55, 4, 8] => "ST".into(), [0x55, 4, 10] => "O".into(), [0x55, 4, 11] => "OU".into(), [0x55, 4, 5] => "serialNumber".into(),
+        [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 1, 9, 1] => "EMAIL".into(), [0x09, 0x92, 0x26, 0x89, 0x93, 0xf2, 0x2c, 0x64, 1, 0x19] => "DC".into(),
+        _ => {
+            let arcs = o.iter().fold((vec![], 0u64), |(mut a, v), b| { let v = v << 7 | (b & 0x7f) as u64; if b & 0x80 == 0 { a.push(v); (a, 0) } else { (a, v) } }).0;
+            arcs.first().map(|&f| { let top = (f / 40).min(2); [top, f - 40 * top].into_iter().chain(arcs[1..].iter().copied()).map(|n| n.to_string()).collect::<Vec<_>>().join(".") }).unwrap_or_default()
+        }
+    }
+}
+fn asn1_text(t: u8, v: &[u8]) -> String { if t == 0x1e { String::from_utf16_lossy(&v.chunks(2).map(|c| u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect::<Vec<_>>()) } else { String::from_utf8_lossy(v).to_string() } }
+pub fn dn_text(name: &[u8]) -> String {
+    let esc = |v: String| v.chars().flat_map(|c| ",+\"\\<>;".contains(c).then_some('\\').into_iter().chain([c])).collect::<String>();
+    let rdn = |set: &&[u8]| kids(set).iter().filter_map(|atv| { let p = kids(atv); let ((_, oid), (t, v)) = (body(p.first()?)?, body(p.get(1)?)?); Some(format!("{}={}", oid_name(oid), esc(asn1_text(t, v)))) }).collect::<Vec<_>>().join("+");
+    kids(name).iter().rev().map(rdn).collect::<Vec<_>>().join(",")
+}
+fn asn1_date(d: &[u8]) -> Option<String> {
+    let (t, v) = body(d)?;
+    let v = std::str::from_utf8(v).ok()?;
+    let (y, rest) = if t == 0x17 { let yy: u32 = v.get(..2)?.parse().ok()?; (if yy >= 50 { 1900 + yy } else { 2000 + yy }, v.get(2..)?) } else { (v.get(..4)?.parse().ok()?, v.get(4..)?) };
+    let (m, day): (u32, u32) = (rest.get(..2)?.parse().ok()?, rest.get(2..4)?.parse().ok()?);
+    Some(format!("{y:04}-{m:02}-{day:02}"))
+}
+#[derive(Debug, Default, PartialEq)]
+pub struct Info { pub subject: String, pub issuer: String, pub from: String, pub to: String }
+pub fn info(der: &[u8]) -> Info {
+    let f = tbs(der).unwrap_or_default();
+    let dates = f.get(3).map(|v| kids(v)).unwrap_or_default();
+    let date = |k: usize| dates.get(k).and_then(|d| asn1_date(d)).unwrap_or_else(|| "?".into());
+    Info { subject: f.get(4).map(|n| dn_text(n)).unwrap_or_default(), issuer: f.get(2).map(|n| dn_text(n)).unwrap_or_default(), from: date(0), to: date(1) }
 }
 pub fn spki_pin(der: &[u8]) -> Option<String> { cert_parts(der).map(|(_, _, k)| format!("sha256/{}", STANDARD.encode(Sha256::digest(k)))) }
 pub fn fingerprint(der: &[u8]) -> String { Sha256::digest(der).iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(":") }
@@ -154,6 +190,59 @@ fn auto_trusted(app: &AppHandle, host: &str, leaf: &[u8]) -> bool {
     matches!(v, Verdict::Local | Verdict::Pinned | Verdict::Grandfathered)
 }
 pub fn question_pending(app: &AppHandle) -> bool { !app.state::<AppState>().cert_questions.lock().is_empty() }
+pub struct Question { pub title: String, pub heading: String, pub body: String, pub details: String, pub more: String, pub trust: String, pub cancel: String }
+pub fn question(app: &AppHandle, host: &str, leaf: &[u8], changed: bool) -> Question {
+    let (public, i, fp) = (public_name(host), info(leaf), fingerprint(leaf));
+    let vpn = public && crate::nav_fail::vpn_active();
+    let tv = |k: &str, v: &[(&str, &str)]| state::tv(app, k, v);
+    let fpv = format!("\n{}", fp_lines(&fp));
+    let heading = if public { state::t(app, if vpn { "cert.vpnTitle" } else { "cert.networkTitle" }) } else { tv(if changed { "cert.changedMessage" } else { "cert.unknownMessage" }, &[("host", host)]) };
+    let body = if public { [Some(tv("cert.certFor", &[("host", host), ("issuer", &issuer_label(&i.issuer))])), vpn.then(|| tv("cert.vpnTip", &[("host", host)])), changed.then(|| state::t(app, "cert.keyChanged"))].into_iter().flatten().collect::<Vec<_>>().join("\n\n") } else { format!("{}\n\n{}", state::t(app, if changed { "cert.changedDetail" } else { "cert.unknownDetail" }), tv("cert.fingerprint", &[("value", &fpv)])) };
+    let subject = if i.subject.is_empty() { host.to_string() } else { dn_field(&i.subject, "CN").unwrap_or(i.subject.clone()) };
+    let details = [tv("cert.issuedTo", &[("value", &subject)]), tv("cert.issuer", &[("value", if i.issuer.is_empty() { "?" } else { &i.issuer })]), tv("cert.valid", &[("from", &i.from), ("to", &i.to)]), tv("cert.fingerprint", &[("value", &fpv)])].join("\n");
+    Question { title: state::t(app, "cert.title"), heading, body, details, more: state::t(app, "cert.details"), trust: state::t(app, if changed { "cert.trustNew" } else { "cert.trust" }), cancel: state::t(app, "dialog.cancel") }
+}
+pub struct Waiter { pub resume: Box<dyn FnOnce(bool)>, pub nav: Option<String>, pub main: bool }
+thread_local! {
+    static ASKING: std::cell::RefCell<std::collections::HashMap<String, Vec<Waiter>>> = Default::default();
+    static DECLINED: std::cell::RefCell<std::collections::HashSet<String>> = Default::default();
+}
+fn active_or(app: &AppHandle, uri: &str) -> String { app.state::<AppState>().active_server_url.lock().clone().unwrap_or_else(|| uri.to_string()) }
+pub fn settle(app: &AppHandle, host: &str, chain: &[Vec<u8>], w: Waiter, show: impl FnOnce(String, Question)) -> bool {
+    let pin = spki_pin(&chain[0]).unwrap_or_default();
+    let trusted = auto_trusted(app, host, &chain[0]);
+    let changed = !trusted && verdict_for(app, host, &[]) == Verdict::Changed;
+    let key = format!("{host}|{pin}");
+    let declined = DECLINED.with(|d| d.borrow().contains(&key));
+    let problem = |p: Problem| w.nav.clone().filter(|_| w.main).map(|uri| (uri, p));
+    let shown = match kind(chosen(app, host), trusted, crate::nav_fail::captive(), host) {
+        Kind::Retry => { (w.resume)(true); return true }
+        Kind::Captive => problem(Problem::Captive),
+        Kind::Foreign => problem(Problem::Redirect { host: host.to_string(), href: w.nav.clone().unwrap_or_default() }),
+        Kind::Trust if w.nav.is_some() || !declined => {
+            if ASKING.with(|a| { let mut a = a.borrow_mut(); let list = a.entry(key.clone()).or_default(); list.push(w); list.len() == 1 }) {
+                app.state::<AppState>().cert_questions.lock().insert(key.clone());
+                show(key, question(app, host, &chain[0], changed));
+            }
+            return true;
+        }
+        Kind::Trust => None,
+    };
+    (w.resume)(false);
+    shown.map(|(uri, p)| crate::nav_fail::show_problem(app, &active_or(app, &uri), p)).is_some()
+}
+pub fn answer(app: &AppHandle, key: &str, yes: bool) {
+    let Some(waiters) = ASKING.with(|a| a.borrow_mut().remove(key)) else { return };
+    let _ = yes.then(|| key.split_once('|').map(|(host, pin)| remember(app, host, pin)));
+    app.state::<AppState>().cert_questions.lock().remove(key);
+    DECLINED.with(|d| { let _ = if yes { d.borrow_mut().remove(key) } else { d.borrow_mut().insert(key.to_string()) }; });
+    for w in waiters {
+        let _ = (yes && w.nav.is_some()).then(|| *app.state::<AppState>().pending_loading.lock() = true);
+        let untrusted = w.nav.clone().filter(|_| !yes && w.main);
+        (w.resume)(yes);
+        let _ = untrusted.map(|uri| crate::nav_fail::show_problem(app, &active_or(app, &uri), Problem::Untrusted));
+    }
+}
 #[cfg(target_os = "linux")]
 mod linux {
     use super::*;
@@ -161,19 +250,9 @@ mod linux {
     use gtk::gio::TlsCertificate;
     use gtk::glib;
     use gtk::prelude::*;
-    use std::cell::{Cell, RefCell};
-    use std::collections::{HashMap, HashSet};
-    use std::rc::Rc;
     use webkit2gtk::{WebContext, WebContextExt, WebView, WebViewExt, WebsiteDataManagerExt};
-    struct Waiter { ctx: WebContext, cert: TlsCertificate, nav: Option<(WebView, String)>, main: bool }
-    thread_local! {
-        static ASKING: RefCell<HashMap<String, Vec<Waiter>>> = RefCell::new(HashMap::new());
-        static DECLINED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
-    }
     fn der(cert: &TlsCertificate) -> Vec<u8> { cert.property::<Option<glib::ByteArray>>("certificate").map(|b| b.to_vec()).unwrap_or_default() }
     fn presented(cert: &TlsCertificate) -> Vec<Vec<u8>> { std::iter::successors(Some(cert.clone()), |c| c.issuer()).take(8).map(|c| der(&c)).filter(|d| !d.is_empty()).collect() }
-    fn text(cert: &TlsCertificate, prop: &str) -> Option<String> { cert.find_property(prop).and_then(|_| cert.property::<Option<String>>(prop)) }
-    fn date(cert: &TlsCertificate, prop: &str) -> String { cert.find_property(prop).and_then(|_| cert.property::<Option<glib::DateTime>>(prop)).and_then(|d| d.format("%x").ok()).map(|s| s.to_string()).unwrap_or_else(|| "?".into()) }
     fn os_trusts(db: &impl IsA<gtk::gio::TlsDatabase>, chain: &[Vec<u8>], host: &str, port: u16) -> bool {
         let Ok(c) = TlsCertificate::from_pem(&chain.iter().map(|d| pem(d)).collect::<String>()) else { return false };
         db.verify_chain(&c, gtk::gio::TLS_DATABASE_PURPOSE_AUTHENTICATE_SERVER, Some(&gtk::gio::NetworkAddress::new(host, port)), None::<&gtk::gio::TlsInteraction>, gtk::gio::TlsDatabaseVerifyFlags::NONE, None::<&gtk::gio::Cancellable>).map(|f| f.is_empty()).unwrap_or(false)
@@ -185,7 +264,6 @@ mod linux {
         let _ = nav.map(|(v, u)| v.load_uri(&u));
         true
     }
-    fn active_or(app: &AppHandle, uri: &str) -> String { app.state::<AppState>().active_server_url.lock().clone().unwrap_or_else(|| uri.to_string()) }
     pub fn attach(view: &WebView, app: AppHandle, label: String) {
         let _ = view.website_data_manager().map(|m| m.set_tls_errors_policy(webkit2gtk::TLSErrorsPolicy::Fail));
         view.connect_load_failed_with_tls_errors(move |view, uri, cert, _| check(view, &app, &label, uri, cert, true));
@@ -200,66 +278,34 @@ mod linux {
             glib::MainContext::default().spawn_local(async move { let _ = gtk::gio::spawn_blocking(move || fetch_issuers(&leaf)).await; check(&view, &app, &label, &uri, &cert, false); });
             return true;
         }
-        settle(app, &ctx, cert, &host, &chain, Some((view.clone(), uri.to_string())), label == "main", view)
+        settle_on(app, view, &ctx, cert, &host, &chain, Some(uri.to_string()), label == "main")
     }
-    fn settle(app: &AppHandle, ctx: &WebContext, cert: &TlsCertificate, host: &str, chain: &[Vec<u8>], nav: Option<(WebView, String)>, main: bool, parent: &WebView) -> bool {
-        let pin = spki_pin(&chain[0]).unwrap_or_default();
-        let trusted = auto_trusted(app, host, &chain[0]);
-        let changed = !trusted && verdict_for(app, host, &[]) == Verdict::Changed;
-        let k = kind(chosen(app, host), trusted, crate::nav_fail::captive(), host);
-        let declined = DECLINED.with(|d| d.borrow().contains(&format!("{host}|{pin}")));
-        match (k, nav) {
-            (Kind::Retry, nav) => allow(ctx, cert, host, nav),
-            (Kind::Captive, Some((_, uri))) if main => { crate::nav_fail::show_problem(app, &active_or(app, &uri), Problem::Captive); true }
-            (Kind::Foreign, Some((_, uri))) if main => { crate::nav_fail::show_problem(app, &active_or(app, &uri), Problem::Redirect { host: host.to_string(), href: uri.clone() }); true }
-            (Kind::Trust, nav) if nav.is_some() || !declined => { ask(app, parent, Waiter { ctx: ctx.clone(), cert: cert.clone(), nav, main }, host, &pin, &fingerprint(&chain[0]), changed); true }
-            _ => false,
-        }
+    fn settle_on(app: &AppHandle, view: &WebView, ctx: &WebContext, cert: &TlsCertificate, host: &str, chain: &[Vec<u8>], nav: Option<String>, main: bool) -> bool {
+        let (c, t, h, v, n) = (ctx.clone(), cert.clone(), host.to_string(), view.clone(), nav.clone());
+        let resume = Box::new(move |yes: bool| { let _ = yes.then(|| allow(&c, &t, &h, n.map(|u| (v, u)))); });
+        let (a, parent) = (app.clone(), view.clone());
+        settle(app, host, chain, Waiter { resume, nav, main }, move |key, q| show(&a, &parent, key, q))
     }
-    fn ask(app: &AppHandle, parent: &WebView, w: Waiter, host: &str, pin: &str, fp: &str, changed: bool) {
-        let key = format!("{host}|{pin}");
-        let cert = w.cert.clone();
-        if !ASKING.with(|a| { let mut a = a.borrow_mut(); let list = a.entry(key.clone()).or_default(); list.push(w); list.len() == 1 }) { return }
-        app.state::<AppState>().cert_questions.lock().insert(key.clone());
-        let (public, issuer_dn) = (public_name(host), text(&cert, "issuer-name").unwrap_or_default());
-        let vpn = public && crate::nav_fail::vpn_active();
-        let tv = |k: &str, v: &[(&str, &str)]| state::tv(app, k, v);
-        let heading = if public { state::t(app, if vpn { "cert.vpnTitle" } else { "cert.networkTitle" }) } else { tv(if changed { "cert.changedMessage" } else { "cert.unknownMessage" }, &[("host", host)]) };
-        let body = if public { [Some(tv("cert.certFor", &[("host", host), ("issuer", &issuer_label(&issuer_dn))])), vpn.then(|| tv("cert.vpnTip", &[("host", host)])), changed.then(|| state::t(app, "cert.keyChanged"))].into_iter().flatten().collect::<Vec<_>>().join("\n\n") } else { format!("{}\n\n{}", state::t(app, if changed { "cert.changedDetail" } else { "cert.unknownDetail" }), tv("cert.fingerprint", &[("value", &format!("\n{}", fp_lines(fp)))])) };
-        let subject = text(&cert, "subject-name").map(|s| dn_field(&s, "CN").unwrap_or(s)).unwrap_or_else(|| host.to_string());
-        let details = [tv("cert.issuedTo", &[("value", &subject)]), tv("cert.issuer", &[("value", if issuer_dn.is_empty() { "?" } else { &issuer_dn })]), tv("cert.valid", &[("from", &date(&cert, "not-valid-before")), ("to", &date(&cert, "not-valid-after"))]), tv("cert.fingerprint", &[("value", &format!("\n{}", fp_lines(fp)))])].join("\n");
+    fn show(app: &AppHandle, parent: &WebView, key: String, q: Question) {
         let window = parent.toplevel().and_then(|t| t.downcast::<gtk::Window>().ok());
-        let md = gtk::MessageDialog::new(window.as_ref(), gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT, gtk::MessageType::Warning, gtk::ButtonsType::None, &heading);
-        md.set_title(&state::t(app, "cert.title"));
-        md.set_secondary_text(Some(&body));
-        md.add_button(&state::t(app, "dialog.cancel"), gtk::ResponseType::Cancel);
-        md.add_button(&state::t(app, if changed { "cert.trustNew" } else { "cert.trust" }), gtk::ResponseType::Accept);
+        let md = gtk::MessageDialog::new(window.as_ref(), gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT, gtk::MessageType::Warning, gtk::ButtonsType::None, &q.heading);
+        md.set_title(&q.title);
+        md.set_secondary_text(Some(&q.body));
+        md.add_button(&q.cancel, gtk::ResponseType::Cancel);
+        md.add_button(&q.trust, gtk::ResponseType::Accept);
         md.set_default_response(gtk::ResponseType::Cancel);
-        let more = gtk::Label::new(Some(&details));
+        let more = gtk::Label::new(Some(&q.details));
         more.set_selectable(true);
         more.set_xalign(0.0);
         more.set_line_wrap(true);
         more.set_max_width_chars(64);
-        let exp = gtk::Expander::new(Some(&state::t(app, "cert.details")));
+        let exp = gtk::Expander::new(Some(&q.more));
         exp.add(&more);
         let _ = md.message_area().downcast::<gtk::Box>().map(|b| b.pack_end(&exp, false, false, 0));
-        let (app, host, pin, done) = (app.clone(), host.to_string(), pin.to_string(), Rc::new(Cell::new(false)));
-        let finish: Rc<dyn Fn(bool)> = Rc::new(move |yes: bool| {
-            if done.replace(true) { return }
-            let _ = yes.then(|| remember(&app, &host, &pin));
-            app.state::<AppState>().cert_questions.lock().remove(&key);
-            DECLINED.with(|d| { let _ = if yes { d.borrow_mut().remove(&key) } else { d.borrow_mut().insert(key.clone()) }; });
-            for w in ASKING.with(|a| a.borrow_mut().remove(&key)).unwrap_or_default() {
-                match (yes, w.nav) {
-                    (true, nav) => { let _ = nav.is_some().then(|| *app.state::<AppState>().pending_loading.lock() = true); allow(&w.ctx, &w.cert, &host, nav); }
-                    (false, Some((_, uri))) if w.main => crate::nav_fail::show_problem(&app, &active_or(&app, &uri), Problem::Untrusted),
-                    _ => {}
-                }
-            }
-        });
-        let f2 = finish.clone();
-        md.connect_response(move |d, r| { finish(r == gtk::ResponseType::Accept); unsafe { d.destroy() } });
-        md.connect_destroy(move |_| f2(false));
+        let (a, k) = (app.clone(), key.clone());
+        md.connect_response(move |d, r| { answer(&a, &k, r == gtk::ResponseType::Accept); unsafe { d.destroy() } });
+        let app = app.clone();
+        md.connect_destroy(move |_| answer(&app, &key, false));
         md.show_all();
     }
     fn probe(view: &WebView, app: &AppHandle, targets: Vec<(String, u16)>, ask: bool) {
@@ -276,7 +322,7 @@ mod linux {
                     let ok = !chain.is_empty() && (completes(&chain, &h, port) || auto_trusted(&app, &h, &chain[0]));
                     if ok { ctx.allow_tls_certificate_for_host(cert, &h) } else if ask && !chain.is_empty() {
                         let (ctx, app, h, view, cert) = (ctx.clone(), app.clone(), h.clone(), view.clone(), cert.clone());
-                        glib::idle_add_local_once(move || { settle(&app, &ctx, &cert, &h, &chain, None, true, &view); });
+                        glib::idle_add_local_once(move || { settle_on(&app, &view, &ctx, &cert, &h, &chain, None, true); });
                     }
                     ok
                 });
@@ -317,6 +363,115 @@ mod linux {
 }
 #[cfg(target_os = "linux")]
 pub use linux::{attach, prewarm, recheck};
+#[cfg(windows)]
+mod webview2 {
+    use super::*;
+    use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2_14, ICoreWebView2ServerCertificateErrorDetectedEventArgs, COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_ALWAYS_ALLOW, COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_CANCEL};
+    use webview2_com::{take_pwstr, NavigationStartingEventHandler, ServerCertificateErrorDetectedEventHandler};
+    use windows_core::{Interface, PWSTR};
+    thread_local! { static NAVS: std::cell::RefCell<std::collections::HashMap<String, String>> = Default::default(); }
+    fn bare(u: &str) -> String { u.split('#').next().unwrap_or(u).to_string() }
+    pub fn navigating(label: &str, url: &str) { NAVS.with(|n| n.borrow_mut().insert(label.to_string(), bare(url))); }
+    pub fn attach(window: &tauri::WebviewWindow) {
+        let (app, label) = (window.app_handle().clone(), window.label().to_string());
+        let _ = window.with_webview(move |w| unsafe {
+            let Ok(core) = w.controller().CoreWebView2() else { return };
+            let l = label.clone();
+            let started = NavigationStartingEventHandler::create(Box::new(move |_, args| {
+                let mut uri = PWSTR::null();
+                let _ = args.filter(|a| a.Uri(&mut uri).is_ok()).map(|_| navigating(&l, &take_pwstr(uri)));
+                Ok(())
+            }));
+            let mut token = 0;
+            let _ = core.add_NavigationStarting(&started, &mut token);
+            let Ok(core) = core.cast::<ICoreWebView2_14>() else { return };
+            let handler = ServerCertificateErrorDetectedEventHandler::create(Box::new(move |_, args| { let _ = args.map(|a| detected(&app, &label, a)); Ok(()) }));
+            let _ = core.add_ServerCertificateErrorDetected(&handler, &mut token);
+        });
+    }
+    fn detected(app: &AppHandle, label: &str, args: ICoreWebView2ServerCertificateErrorDetectedEventArgs) {
+        let text = |f: &dyn Fn(*mut PWSTR) -> windows_core::Result<()>| { let mut p = PWSTR::null(); f(&mut p).ok().map(|_| take_pwstr(p)).unwrap_or_default() };
+        let uri = text(&|p| unsafe { args.RequestUri(p) });
+        let pems = unsafe { args.ServerCertificate() }.ok().map(|c| {
+            let rest = unsafe { c.PemEncodedIssuerCertificateChain() }.ok().map(|s| { let mut n = 0; let _ = unsafe { s.Count(&mut n) }; (0..n).map(|i| text(&|p| unsafe { s.GetValueAtIndex(i, p) })).collect::<String>() }).unwrap_or_default();
+            text(&|p| unsafe { c.ToPemEncoding(p) }) + &rest
+        });
+        let chain = ders(&pems.unwrap_or_default());
+        let deferral = host_of(&uri).filter(|_| !chain.is_empty()).and_then(|h| unsafe { args.GetDeferral() }.ok().map(|d| (h, d)));
+        let Some((host, deferral)) = deferral else { return unsafe { let _ = args.SetAction(COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_CANCEL); } };
+        let nav = NAVS.with(|n| n.borrow().get(label).cloned()).filter(|n| *n == bare(&uri)).map(|_| uri.clone());
+        let ours = nav.is_some() && label == "main";
+        let resume = Box::new(move |yes: bool| unsafe { let _ = (!yes && ours).then(|| crate::nav_fail::CERT_CANCELLED.store(true, std::sync::atomic::Ordering::Relaxed)); let _ = args.SetAction(if yes { COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_ALWAYS_ALLOW } else { COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_CANCEL }); let _ = deferral.Complete(); });
+        let (a, l) = (app.clone(), label.to_string());
+        settle(app, &host, &chain, Waiter { resume, nav, main: label == "main" }, move |key, q| show(&a, &l, key, q));
+    }
+    fn show(app: &AppHandle, label: &str, key: String, q: Question) {
+        let hwnd = app.get_webview_window(label).or_else(|| app.get_webview_window("main")).and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize).unwrap_or(0);
+        let app = app.clone();
+        std::thread::spawn(move || { let yes = unsafe { ask(hwnd, &q) }; let a = app.clone(); let _ = app.run_on_main_thread(move || answer(&a, &key, yes)); });
+    }
+    unsafe fn ask(hwnd: isize, q: &Question) -> bool {
+        use windows_sys::Win32::UI::Controls::*;
+        let w = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
+        let (title, heading, body, details, more, trust, cancel) = (w(&q.title), w(&q.heading), w(&q.body), w(&q.details), w(&q.more), w(&q.trust), w(&q.cancel));
+        let buttons = [TASKDIALOG_BUTTON { nButtonID: 100, pszButtonText: trust.as_ptr() }, TASKDIALOG_BUTTON { nButtonID: 2, pszButtonText: cancel.as_ptr() }];
+        let mut cfg: TASKDIALOGCONFIG = std::mem::zeroed();
+        cfg.cbSize = std::mem::size_of::<TASKDIALOGCONFIG>() as u32;
+        cfg.hwndParent = hwnd as _;
+        cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW;
+        cfg.pszWindowTitle = title.as_ptr();
+        cfg.Anonymous1.pszMainIcon = TD_WARNING_ICON;
+        cfg.pszMainInstruction = heading.as_ptr();
+        cfg.pszContent = body.as_ptr();
+        cfg.cButtons = buttons.len() as u32;
+        cfg.pButtons = buttons.as_ptr();
+        cfg.nDefaultButton = 2;
+        cfg.pszExpandedInformation = details.as_ptr();
+        cfg.pszExpandedControlText = more.as_ptr();
+        cfg.pszCollapsedControlText = more.as_ptr();
+        let mut pressed = 0;
+        TaskDialogIndirect(&cfg, &mut pressed, std::ptr::null_mut(), std::ptr::null_mut()) == 0 && pressed == 100
+    }
+}
+#[cfg(windows)]
+pub use webview2::{attach, navigating};
+#[cfg(target_os = "macos")]
+mod wkwebview {
+    use super::*;
+    use std::ffi::{c_char, c_void, CStr, CString};
+    type Decide = extern "C" fn(*mut c_void, *const c_char, *const *const u8, *const usize, usize, *const c_char, i32, u64);
+    extern "C" {
+        fn haven_macos_trust_attach(webview: *mut c_void, decide: Decide);
+        fn haven_macos_trust_finish(request: u64, allow: i32);
+        fn haven_macos_trust_ask(webview: *mut c_void, key: *const c_char, title: *const c_char, heading: *const c_char, body: *const c_char, details: *const c_char, more: *const c_char, trust: *const c_char, cancel: *const c_char, done: extern "C" fn(*const c_char, i32));
+    }
+    static APP: once_cell::sync::OnceCell<AppHandle> = once_cell::sync::OnceCell::new();
+    static VIEWS: Lazy<parking_lot::Mutex<std::collections::HashMap<usize, String>>> = Lazy::new(Default::default);
+    fn utf8(p: *const c_char) -> String { if p.is_null() { String::new() } else { unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned() } }
+    pub fn attach(window: &tauri::WebviewWindow) {
+        let _ = APP.set(window.app_handle().clone());
+        let label = window.label().to_string();
+        let _ = window.with_webview(move |w| { let view = w.inner(); VIEWS.lock().insert(view as usize, label); unsafe { haven_macos_trust_attach(view, decide) } });
+    }
+    extern "C" fn decide(view: *mut c_void, host: *const c_char, ders: *const *const u8, lens: *const usize, count: usize, page: *const c_char, loading: i32, request: u64) {
+        let (host, page) = (normalize_host(&utf8(host)), utf8(page));
+        let chain: Vec<Vec<u8>> = (0..count).map(|i| unsafe { std::slice::from_raw_parts(*ders.add(i), *lens.add(i)).to_vec() }).filter(|d| !d.is_empty()).collect();
+        let Some(app) = APP.get().filter(|_| !chain.is_empty() && !host.is_empty()) else { return unsafe { haven_macos_trust_finish(request, 0) } };
+        let main = VIEWS.lock().get(&(view as usize)).map(|l| l == "main").unwrap_or(false);
+        let nav = (loading != 0 && host_of(&page).as_deref() == Some(host.as_str())).then_some(page);
+        let resume = Box::new(move |yes: bool| unsafe { haven_macos_trust_finish(request, yes as i32) });
+        let view = view as usize;
+        settle(app, &host, &chain, Waiter { resume, nav, main }, move |key, q| show(view, key, q));
+    }
+    fn show(view: usize, key: String, q: Question) {
+        let c = |s: &str| CString::new(s.replace('\0', "")).unwrap_or_default();
+        let (key, title, heading, body, details, more, trust, cancel) = (c(&key), c(&q.title), c(&q.heading), c(&q.body), c(&q.details), c(&q.more), c(&q.trust), c(&q.cancel));
+        unsafe { haven_macos_trust_ask(view as *mut c_void, key.as_ptr(), title.as_ptr(), heading.as_ptr(), body.as_ptr(), details.as_ptr(), more.as_ptr(), trust.as_ptr(), cancel.as_ptr(), answered) }
+    }
+    extern "C" fn answered(key: *const c_char, yes: i32) { let _ = APP.get().map(|app| answer(app, &utf8(key), yes != 0)); }
+}
+#[cfg(target_os = "macos")]
+pub use wkwebview::attach;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,6 +511,20 @@ mod tests {
         assert_eq!(issuer_label("CN=FortiGate CA"), "FortiGate CA");
         assert_eq!(issuer_label("O=Acme\\, Inc.,CN=Acme\\, Inc."), "Acme, Inc.");
         assert_eq!(issuer_label(""), "?");
+    }
+    #[test]
+    fn certificate_details() {
+        let one = |p: &str| ders(p).remove(0);
+        assert_eq!(info(&one(include_str!("../certs/test/leaf-only.pem"))), Info { subject: "CN=haven.moviethingy.xyz".into(), issuer: "CN=YE1,O=Let's Encrypt,C=US".into(), from: "2026-07-19".into(), to: "2026-10-17".into() });
+        let mitm = info(&one(include_str!("../certs/test/mitm-leaf.pem")));
+        assert_eq!((mitm.subject.as_str(), issuer_label(&mitm.issuer).as_str(), mitm.to.as_str()), ("CN=haven.test", "Acme VPN (Acme VPN Threat Protection CA)", "2126-09-18"));
+        assert_eq!(info(b"junk"), Info { from: "?".into(), to: "?".into(), ..Default::default() });
+        let name = [0x30, 0x22, 0x31, 0x0d, 0x30, 0x0b, 0x06, 0x03, 0x55, 0x04, 0x0a, 0x0c, 0x04, b'A', b',', b'B', b'+', 0x31, 0x11, 0x30, 0x0f, 0x06, 0x03, 0x2a, 0x03, 0x04, 0x1e, 0x08, 0, b'V', 0, b'P', 0, b'N', 0, b'!'];
+        assert_eq!(dn_text(&name), "1.2.3.4=VPN!,O=A\\,B\\+");
+        assert_eq!(dn_field(&dn_text(&name), "O").as_deref(), Some("A,B+"));
+        assert_eq!(asn1_date(b"\x18\x0f20491231235959Z").as_deref(), Some("2049-12-31"));
+        assert_eq!(asn1_date(b"\x17\x0d991231235959Z").as_deref(), Some("1999-12-31"));
+        assert_eq!(asn1_date(b"\x17\x0dxx1231235959Z"), None);
     }
     #[test]
     fn bundle_builds_chains() {

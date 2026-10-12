@@ -9,14 +9,13 @@ const INJECT_SCRIPT: &str = include_str!("../../inject/app-bridge.js");
 const POPUP_CLOSE_TITLE: &str = "\u{2063}haven-popup-close";
 const POPUP_CLOSE_SCRIPT: &str = "(()=>{const c=window.close.bind(window);window.close=function(){if(window.top===window)document.title='\\u2063haven-popup-close';c();};})();";
 
-/// Haven servers ship a self-signed certificate by default. The Electron app
-/// accepted every certificate (certificate-error + setCertificateVerifyProc);
-/// WebView2 has no per-request hook, so the flag goes on the browser process.
 /// Must match `additionalBrowserArgs` on the welcome window in tauri.conf.json,
 /// because WebView2 only honours the args of the first webview it creates.
+/// Certificates are not waved through here: WebView2 verifies them against the
+/// Windows store and `cert_trust` decides about the ones it rejects.
 #[cfg(windows)]
 pub const BROWSER_ARGS: &str =
-    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --ignore-certificate-errors";
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
 
 /// Embed origins the Haven web UI loads in iframes / navigations.
 const EMBED_ORIGINS: [&str; 5] = [
@@ -27,16 +26,11 @@ const EMBED_ORIGINS: [&str; 5] = [
     "https://challenges.cloudflare.com",
 ];
 
-// Linux counterpart of `--ignore-certificate-errors`: WebKitGTK rejects
-// self-signed certificates unless the web context's TLS policy says otherwise.
-// On macOS, our Objective-C runtime swizzling in native/src/macos/macos_ssl.mm
-// handles self-signed server certificates seamlessly.
-#[cfg(target_os = "macos")]
-extern "C" {
-    fn haven_macos_accept_self_signed(webview: *mut std::ffi::c_void);
-}
-
-pub fn accept_self_signed(window: &tauri::WebviewWindow) {
+// Certificates the system trusts load as usual on every platform. The ones it
+// rejects go to `cert_trust`: WebKitGTK's TLS error signal on Linux, WebView2's
+// ServerCertificateErrorDetected on Windows and the WKWebView server-trust
+// challenge on macOS (native/src/macos/macos_ssl.mm).
+pub fn attach_cert_trust(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "linux")]
     {
         use webkit2gtk::{SettingsExt, WebViewExt};
@@ -52,16 +46,9 @@ pub fn accept_self_signed(window: &tauri::WebviewWindow) {
             attach_script_dialogs(&w.inner());
         });
     }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = window.with_webview(|w| {
-            let inner = w.inner();
-            unsafe {
-                haven_macos_accept_self_signed(inner);
-            }
-        });
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(any(windows, target_os = "macos"))]
+    crate::cert_trust::attach(window);
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     let _ = window;
 }
 
@@ -291,7 +278,14 @@ fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String
         .center()
         .disable_drag_drop_handler()
         .initialization_script(INJECT_SCRIPT)
-        .on_navigation(move |url| allow_navigation(&guard, url))
+        .on_navigation(move |url| {
+            let allowed = allow_navigation(&guard, url);
+            // The first load starts before cert_trust can watch
+            // NavigationStarting, so it learns the main page from here.
+            #[cfg(windows)]
+            let _ = allowed.then(|| crate::cert_trust::navigating("main", url.as_str()));
+            allowed
+        })
         .on_page_load(move |_window, payload| {
             crate::nav_fail::on_page_load(&load_guard, &payload);
         })
@@ -307,7 +301,7 @@ fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String
     let _ = download_app;
     let main = builder.build().map_err(|e| e.to_string())?;
     let _ = main.center();
-    accept_self_signed(&main);
+    attach_cert_trust(&main);
     allow_media_permissions(&main);
     crate::nav_fail::attach_fail_watch(&main, app.clone());
     let (bg, fg) = crate::theme_icon::stored(app);
@@ -357,7 +351,7 @@ fn open_popup(app: &AppHandle, url: Url) -> NewWindowResponse<tauri::Wry> {
         });
     #[cfg(windows)]
     let builder = builder.additional_browser_args(BROWSER_ARGS);
-    let _ = builder.build().map(|w| accept_self_signed(&w));
+    let _ = builder.build().map(|w| attach_cert_trust(&w));
     NewWindowResponse::Deny
 }
 fn handle_error_nav(app: &AppHandle, action: &str) {
@@ -411,7 +405,7 @@ fn create_welcome_window(app: &AppHandle) -> Result<(), String> {
     #[cfg(windows)]
     let builder = builder.additional_browser_args(BROWSER_ARGS);
     let welcome = builder.build().map_err(|e| e.to_string())?;
-    accept_self_signed(&welcome);
+    attach_cert_trust(&welcome);
     let _ = welcome.set_focus();
     Ok(())
 }

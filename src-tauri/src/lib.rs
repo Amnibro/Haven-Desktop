@@ -133,7 +133,7 @@ pub fn run() {
             // the settings page re-saved them, so after a restart they did nothing.
             let _ = commands::shortcuts_register(app.handle().clone(), serde_json::json!({}));
             if let Some(welcome) = app.get_webview_window("welcome") {
-                commands::accept_self_signed(&welcome);
+                commands::attach_cert_trust(&welcome);
             }
 
             // Welcome starts hidden so skipWelcome never flashes Host / Join.

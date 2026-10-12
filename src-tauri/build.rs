@@ -49,8 +49,14 @@ fn main() {
         let cxx = std::env::var("CXX").unwrap_or_else(|_| "c++".into());
         build.compiler(&cxx);
         build.file("native/src/null_capture.cpp");
-        build.file("native/src/macos/macos_ssl.mm");
         build.define("PLATFORM_UNSUPPORTED", None);
+        cc::Build::new()
+            .cpp(true)
+            .std("c++17")
+            .compiler(&cxx)
+            .flag("-fobjc-arc")
+            .file("native/src/macos/macos_ssl.mm")
+            .compile("haven_macos");
         println!("cargo:rustc-link-lib=c++");
         println!("cargo:rustc-link-lib=framework=WebKit");
         println!("cargo:rustc-link-lib=framework=AppKit");
@@ -66,5 +72,6 @@ fn main() {
     }
 
     build.compile("haven_audio");
+    println!("cargo:rerun-if-changed=native/src");
     tauri_build::build()
 }
