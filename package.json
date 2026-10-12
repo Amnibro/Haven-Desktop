@@ -1,7 +1,7 @@
 {
   "name": "haven-desktop",
   "private": true,
-  "version": "2.6.0",
+  "version": "2.6.1",
   "homepage": "https://haven-app.com/",
   "description": "Haven Desktop — Private chat, reimagined for your desktop (Tauri)",
   "license": "AGPL-3.0",

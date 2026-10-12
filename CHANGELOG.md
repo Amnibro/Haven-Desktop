@@ -2,6 +2,18 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.6.1-tauri (2026-10-12)
+
+Works on VPNs, guest Wi-Fi, trusted networks and mobile hotspots without confusing questions. Level with Electron 1.6.2.
+
+- **Servers that send only their own certificate connect without a question on Linux.** Some servers (haven.moviethingy.xyz among them) leave out the Let's Encrypt intermediate, and Linux has no way to fetch it, so the app asked whether to trust a perfectly valid certificate. The common public intermediates (Let's Encrypt R10–R14, E5–E9, YE/YR and their roots, Google Trust Services, Sectigo/ZeroSSL, DigiCert) now ship with the app as chain material, checked against your system's trusted roots. Anything else is fetched from the certificate's issuer link once and cached.
+- **Your system's trusted certificates come first.** A company or VPN root you installed on the computer is trusted with no question.
+- **One question, worded for what is happening.** When a VPN or network presents its own certificate for your server, the question says so ("Your VPN is presenting its own certificate", or "This network…"), names who issued it, suggests allowing the server in the VPN's web filter, and keeps the fingerprint and dates under Details. Servers on your own network or reached by IP keep the self-hosted wording. The question appears once per server and certificate, however many requests hit it.
+- **Trusting a second certificate keeps the first.** Each server remembers every certificate you trusted, so switching between your VPN and your home network does not ask again. A certificate different from the ones you trusted gets the same single question saying so, instead of a dead end.
+- **No questions about other sites.** When a network sends Haven somewhere else (a hotel or guest Wi-Fi sign-in page, a firewall's block page), the app no longer asks about that site's certificate or bounces it to the browser silently: it says "Your network or VPN redirected Haven to …" with **Open sign-in page** (in your browser) and **Try Again**.
+- **Guest Wi-Fi sign-in.** When Linux reports a sign-in portal, the app shows "Sign in to this Wi-Fi to continue" and reconnects by itself once you are signed in.
+- **Quiet reconnects.** A page load that fails during a network change is retried quietly before any error shows, and the connection page tries again by itself when the server can be reached again. On Linux, switching networks or turning a VPN on or off re-checks the server's certificate in the background so the chat reconnects without a reload. Windows and macOS still accept every certificate, as before.
+
 ## v2.6.0-tauri (2026-10-12)
 
 - **New update signing key.** 2.6.0 is signed with a new updater key, so copies of 2.5.x installed from the AppImage or the Windows installer cannot update to it on their own: download 2.6.0 once and later versions update in-app again. Flatpak and Debian/Ubuntu users update through their package manager.
