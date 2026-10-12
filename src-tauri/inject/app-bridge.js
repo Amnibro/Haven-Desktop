@@ -9,6 +9,8 @@
     return core.invoke(cmd, args);
   }
   invoke('nav_page_ready').catch(() => {});
+  const userActedJustNow = (() => { try { const get = Object.getOwnPropertyDescriptor(UserActivation.prototype, 'isActive').get, act = navigator.userActivation, apply = Reflect.apply; return () => apply(get, act, []) === true; } catch { return () => false; } })();
+  const listAction = (opts) => ({ user: !!(opts && typeof opts === 'object' && opts.user === true), fresh: userActedJustNow() });
 
   // ── Loading indicator overlay (eliminates theme & customization setup flicker) ──
   (function initLoadingOverlay() {
@@ -1091,7 +1093,7 @@
       setLanguage: (preference) => invoke('i18n_set_language', { preference }),
     },
 
-    switchServer: (url) => invoke('nav_switch_server', { serverUrl: url }),
+    switchServer: (url) => invoke('nav_switch_server', { serverUrl: url, action: listAction({ user: true }) }),
     backToWelcome: () => invoke('nav_back_to_welcome'),
 
     update: {
@@ -1160,11 +1162,13 @@
       invoke('save_image', { payload: bytes || '', filename: filename || 'haven-image.png' }),
 
     getServerHistory: () => invoke('server_history_get'),
-    addServerHistory: async (url, name) => {
-      const res = await invoke('server_history_add', { url, name }).catch(() => 'added');
-      return res || 'added';
-    },
-    removeServerHistory: (url) => invoke('server_history_remove', { url }),
+    serverListGated: true,
+    addServerHistory: (url, name, opts) => invoke('server_history_add', { url, name: name == null ? null : String(name), opts: opts && typeof opts === 'object' ? opts : null, action: listAction(opts) }),
+    removeServerHistory: (url, opts) => invoke('server_history_remove', { url, action: listAction(opts) }),
+    getServerList: () => invoke('server_list_get'),
+    setServerOrder: (urls) => invoke('server_list_set_order', { urls: Array.isArray(urls) ? urls : [] }),
+    updateServerName: (url, name, opts) => invoke('server_history_update_name', { url, name: String(name ?? ''), opts: opts && typeof opts === 'object' ? opts : null, action: listAction(opts) }),
+    initialServerList: null,
     initialServerHistory: [],
 
     prefs: {
@@ -1186,6 +1190,8 @@
   invoke('server_history_get').then((h) => {
     window.havenDesktop.initialServerHistory = Array.isArray(h) ? h : [];
   }).catch(() => {});
+  invoke('server_list_get').then((l) => { window.havenDesktop.initialServerList = l || null; }).catch(() => {});
+  listen('server-list:changed', () => window.dispatchEvent(new CustomEvent('haven-server-list-changed')));
 
   // ── Notification override ────────────────────────────────
   class HavenNotification {
@@ -2017,13 +2023,13 @@
         urlSpan.textContent = entry.url;
         info.appendChild(nameSpan);
         info.appendChild(urlSpan);
-        info.onclick = () => invoke('nav_change_primary_server', { serverUrl: entry.url });
+        info.onclick = () => invoke('nav_change_primary_server', { serverUrl: entry.url, action: listAction({ user: true }) });
         const removeBtn = document.createElement('button');
         removeBtn.className = 'hsp-remove-btn';
         removeBtn.textContent = '\u00d7';
         removeBtn.onclick = async (e) => {
           e.stopPropagation();
-          await invoke('server_history_remove', { url: entry.url });
+          await invoke('server_history_remove', { url: entry.url, action: listAction({ user: true }) });
           await loadRecentServers();
         };
         item.appendChild(info);
@@ -2078,7 +2084,7 @@
           errorEl.style.display = 'block';
           return;
         }
-        await invoke('nav_change_primary_server', { serverUrl: check.url || url });
+        await invoke('nav_change_primary_server', { serverUrl: check.url || url, action: listAction({ user: true }) });
       } catch {
         errorEl.textContent = 'Connection failed.';
         errorEl.style.display = 'block';

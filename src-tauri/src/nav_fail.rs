@@ -36,6 +36,9 @@ pub fn server_tcp_reachable_with_timeout(server_url: &str, timeout_ms: u64) -> b
     false
 }
 
+pub fn is_local_ui(url: &Url) -> bool {
+    url.scheme() == "tauri" || matches!(url.host_str(), Some("tauri.localhost") | Some("tauri.localhost.")) || (cfg!(debug_assertions) && matches!(url.host_str(), Some("localhost") | Some("127.0.0.1")) && url.port() == Some(14370))
+}
 pub fn is_desktop_asset_url(url: &Url) -> bool {
     if url.scheme() == "data" || url.scheme() == "tauri" {
         return true;
@@ -46,11 +49,7 @@ pub fn is_desktop_asset_url(url: &Url) -> bool {
     if url.path().contains("connection-error.html") || url.path().contains("splash.html") {
         return true;
     }
-    match url.host_str() {
-        Some("tauri.localhost") | Some("tauri.localhost.") => true,
-        Some("localhost") | Some("127.0.0.1") if url.port() == Some(14370) => true,
-        _ => false,
-    }
+    is_local_ui(url) || (matches!(url.host_str(), Some("localhost") | Some("127.0.0.1")) && url.port() == Some(14370))
 }
 
 pub fn looks_like_browser_error(url: &Url) -> bool {

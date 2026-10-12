@@ -179,6 +179,12 @@ pub fn get_inject_script() -> String {
     INJECT_SCRIPT.to_string()
 }
 
+fn mark_connected(app: &AppHandle, url: &str) {
+    let mut current = crate::server_list::read(app);
+    let before = current.clone();
+    crate::server_list::mark_connected(&mut current, url, crate::server_list::now_ms());
+    crate::server_list::save(app, &current, &before);
+}
 pub fn open_app_window(app: &AppHandle, server_url: &str) -> Result<(), String> {
     let normalized = state::normalize_server_url(server_url)
         .ok_or_else(|| "invalid server URL".to_string())?;
@@ -195,30 +201,7 @@ pub fn open_app_window(app: &AppHandle, server_url: &str) -> Result<(), String> 
         *state.audio_emitter.lock() = Some(app.clone());
     }
 
-    let mut history = state::get_value(app, "serverHistory")?
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    history = state::sanitize_server_history(&history);
-    if let Some(entry) = history
-        .iter_mut()
-        .find(|h| h.get("url").and_then(|u| u.as_str()) == Some(normalized.as_str()))
-    {
-        if let Some(obj) = entry.as_object_mut() {
-            obj.insert("lastConnected".into(), json!(now_ms()));
-        }
-    } else {
-        history.push(json!({
-            "url": normalized,
-            "name": normalized,
-            "lastConnected": now_ms()
-        }));
-    }
-    while history.len() > 20 {
-        history.remove(0);
-    }
-    state::set_value(app, "serverHistory", json!(history))?;
-
+    mark_connected(app, &normalized);
     if !crate::nav_fail::server_tcp_reachable(&normalized) {
         show_or_create_connection_error(app, &normalized)?;
         hide_welcome(app);
@@ -435,19 +418,17 @@ fn go_back_to_welcome(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 // The nav commands are async so Tauri runs them off the GTK main thread:
 // each one probes the server over TCP first (up to 1.5 s per address), and a
 // sync command would freeze the whole window for that long.
 #[tauri::command]
-pub async fn nav_open_app(app: AppHandle, server_url: String) -> Result<(), String> {
-    open_app_window(&app, &server_url)
+pub async fn nav_open_app(app: AppHandle, webview: tauri::Webview, server_url: String) -> Result<(), String> {
+    match super::sender(&app, &webview) { Some(super::Sender::Local) => open_app_window(&app, &server_url), _ => Err("not allowed".into()) }
+}
+async fn page_may_open(app: &AppHandle, webview: &tauri::Webview, server_url: &str, action: &Option<serde_json::Value>) -> bool {
+    let lower = server_url.trim().to_ascii_lowercase();
+    let r = crate::server_list::Request { kind: "open".into(), url: server_url.to_string(), ..Default::default() };
+    (lower.starts_with("http://") || lower.starts_with("https://")) && super::request_change(app, webview, r, action).await.0
 }
 
 #[tauri::command]
@@ -456,7 +437,8 @@ pub fn nav_back_to_welcome(app: AppHandle, _state: State<AppState>) -> Result<()
 }
 
 #[tauri::command]
-pub async fn nav_switch_server(app: AppHandle, server_url: String) -> Result<(), String> {
+pub async fn nav_switch_server(app: AppHandle, webview: tauri::Webview, server_url: String, action: Option<serde_json::Value>) -> Result<(), String> {
+    if !page_may_open(&app, &webview, &server_url, &action).await { return Ok(()) }
     switch_server(&app, &server_url)
 }
 
@@ -464,6 +446,7 @@ fn switch_server(app: &AppHandle, server_url: &str) -> Result<(), String> {
     let normalized = state::normalize_server_url(server_url)
         .ok_or_else(|| "invalid server URL".to_string())?;
     *app.state::<AppState>().active_server_url.lock() = Some(normalized.clone());
+    mark_connected(app, &normalized);
     if !crate::nav_fail::server_tcp_reachable(&normalized) {
         show_or_create_connection_error(app, &normalized)?;
         return Ok(());
@@ -474,7 +457,8 @@ fn switch_server(app: &AppHandle, server_url: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn nav_change_primary_server(app: AppHandle, server_url: String) -> Result<(), String> {
+pub async fn nav_change_primary_server(app: AppHandle, webview: tauri::Webview, server_url: String, action: Option<serde_json::Value>) -> Result<(), String> {
+    if !page_may_open(&app, &webview, &server_url, &action).await { return Ok(()) }
     let normalized = state::normalize_server_url(&server_url)
         .ok_or_else(|| "invalid server URL".to_string())?;
     {

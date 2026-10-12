@@ -3,6 +3,7 @@ mod commands;
 mod i18n;
 mod lowmem;
 mod nav_fail;
+mod server_list;
 mod server_manager;
 mod state;
 mod theme_icon;
@@ -103,6 +104,8 @@ pub fn run() {
             commands::server_history_add,
             commands::server_history_remove,
             commands::server_history_update_name,
+            commands::server_list_get,
+            commands::server_list_set_order,
             commands::desktop_get_prefs,
             commands::desktop_set_start_on_login,
             commands::desktop_set_start_hidden,

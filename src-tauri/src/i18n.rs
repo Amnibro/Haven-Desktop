@@ -79,6 +79,22 @@ const EN: &[(&str, &str)] = &[
     ("update.error", "Update error: {error}"),
     ("update.unavailable", "Auto-update is unavailable in this build"),
     ("update.close", "Dismiss"),
+    ("serverList.gate.title", "Your server list"),
+    ("serverList.gate.add", "Add \"{name}\" at {url} to your server list?"),
+    ("serverList.gate.addBack", "Add \"{name}\" at {url} back to your server list? You removed it earlier."),
+    ("serverList.gate.remove", "Remove \"{name}\" ({url}) from your server list?"),
+    ("serverList.gate.rename", "Rename \"{oldName}\" ({url}) to \"{name}\"?"),
+    ("serverList.gate.changeIcon", "Change the icon of \"{name}\" ({url})?"),
+    ("serverList.gate.iconSet", "Its icon will load from {icon} on every server you open."),
+    ("serverList.gate.iconRemoved", "Its custom icon will be removed."),
+    ("serverList.gate.open", "Open {url} and add it to your server list?"),
+    ("serverList.gate.askedBy", "Asked by the page of {name} ({url})."),
+    ("serverList.gate.explain", "Every server you open in Haven shows this list, so allow it only if you made this change yourself."),
+    ("serverList.gate.block", "Ignore {name} until restart"),
+    ("serverList.gate.confirmAdd", "Add"),
+    ("serverList.gate.confirmRemove", "Remove"),
+    ("serverList.gate.confirmChange", "Change"),
+    ("serverList.gate.confirmOpen", "Open"),
     ("audio.unknownApplication", "Unknown"),
 ];
 
@@ -112,6 +128,7 @@ const PT_BR: &[(&str, &str)] = &[
     ("tray.show", "Mostrar Haven"),
     ("tray.quit", "Sair"),
     ("tray.tooltip", "Haven Desktop"),
+    ("dialog.cancel", "Cancelar"),
 ];
 
 fn lookup(locale: &str, key: &str) -> Option<&'static str> {

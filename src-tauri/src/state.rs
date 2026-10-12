@@ -20,7 +20,11 @@ pub struct AppState {
     pub audio_emitter: Mutex<Option<AppHandle>>,
     pub pending_server_load: Mutex<Option<String>>,
     pub returning_to_welcome: Mutex<bool>,
+    pub list_gate: Mutex<ListGate>,
+    pub list_gate_turn: tauri::async_runtime::Mutex<()>,
 }
+#[derive(Default)]
+pub struct ListGate { pub asking: HashSet<String>, pub declined: HashSet<String>, pub blocked: HashSet<String>, pub waiting: usize }
 
 impl Default for AppState {
     fn default() -> Self {
@@ -36,6 +40,8 @@ impl Default for AppState {
             audio_emitter: Mutex::new(None),
             pending_server_load: Mutex::new(None),
             returning_to_welcome: Mutex::new(false),
+            list_gate: Mutex::new(ListGate::default()),
+            list_gate_turn: tauri::async_runtime::Mutex::new(()),
         }
     }
 }
@@ -71,6 +77,8 @@ pub fn ensure_defaults(app: &AppHandle) -> Result<(), String> {
         "disableGpuVsync": false,
         "unlimitFrameRate": false,
         "serverHistory": [],
+        "serverListRemoved": [],
+        "serverListOrder": [],
         "language": "auto",
         "languagePreferenceSet": false
     });
@@ -135,9 +143,11 @@ pub fn i18n_state(app: &AppHandle) -> Result<I18nState, String> {
 }
 
 pub fn t(app: &AppHandle, key: &str) -> String {
-    let state = app.state::<AppState>();
-    let locale = state.current_locale.lock().clone();
-    i18n::translate(&locale, key, &HashMap::new())
+    tv(app, key, &[])
+}
+pub fn tv(app: &AppHandle, key: &str, values: &[(&str, &str)]) -> String {
+    let locale = app.state::<AppState>().current_locale.lock().clone();
+    i18n::translate(&locale, key, &values.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect())
 }
 
 pub fn normalize_server_url(input: &str) -> Option<String> {
@@ -172,35 +182,6 @@ pub fn normalize_server_url(input: &str) -> Option<String> {
     } else {
         format!("{}{}", parsed.origin().ascii_serialization(), path)
     })
-}
-
-pub fn sanitize_server_history(list: &[Value]) -> Vec<Value> {
-    let mut out = Vec::new();
-    let mut seen = HashSet::new();
-    for item in list {
-        let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("");
-        let Some(normalized) = normalize_server_url(url) else {
-            continue;
-        };
-        if !seen.insert(normalized.clone()) {
-            continue;
-        }
-        let name = item
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&normalized)
-            .to_string();
-        let last = item
-            .get("lastConnected")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        out.push(json!({
-            "url": normalized,
-            "name": name,
-            "lastConnected": last
-        }));
-    }
-    out
 }
 
 pub fn build_server_app_url(server_url: &str) -> String {

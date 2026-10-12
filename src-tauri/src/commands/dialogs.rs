@@ -37,7 +37,7 @@ fn safe_filename(name: &str) -> String {
 // blocking_* calls wait on a channel for the answer; called from a sync
 // command (which runs on the main thread) that wait can never finish, and the
 // whole app froze until the desktop killed it.
-async fn off_main<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
+pub(crate) async fn off_main<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())
 }
 
