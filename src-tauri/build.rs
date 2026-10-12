@@ -38,6 +38,10 @@ fn main() {
         }
         build.file("native/src/win/wasapi_capture.cpp");
         build.define("PLATFORM_WINDOWS", None);
+        // /MT: the C++ library goes into the exe instead of MSVCP140.dll.
+        // tauri-build already links vcruntime statically against the
+        // system UCRT, so a clean Windows needs no VC++ Redistributable.
+        build.static_crt(true);
         println!("cargo:rustc-link-lib=ole32");
         println!("cargo:rustc-link-lib=mmdevapi");
         println!("cargo:rustc-link-lib=uuid");
