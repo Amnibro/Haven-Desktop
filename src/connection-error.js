@@ -124,14 +124,9 @@ async function boot() {
           try { hostName = new URL(entry.url).hostname; } catch {}
           const displayName = (entry.name && entry.name !== entry.url) ? entry.name : hostName;
 
-          item.innerHTML = `
-            <div class="recent-server-info">
-              <span class="recent-server-name">${displayName}</span>
-              <span class="recent-server-url">${entry.url}</span>
-            </div>
-            <span class="recent-server-action">Connect →</span>
-          `;
-
+          const info = Object.assign(document.createElement("div"), { className: "recent-server-info" });
+          info.append(Object.assign(document.createElement("span"), { className: "recent-server-name", textContent: displayName }), Object.assign(document.createElement("span"), { className: "recent-server-url", textContent: entry.url }));
+          item.append(info, Object.assign(document.createElement("span"), { className: "recent-server-action", textContent: "Connect \u2192" }));
           bindAction(item, () => invoke("nav_change_primary_server", { serverUrl: entry.url }));
           recentList.appendChild(item);
         });

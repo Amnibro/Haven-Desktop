@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "server-pages",
+  "description": "Haven server pages in the main window: only the bridge commands a page needs",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "http://*",
+      "https://*",
+      "http://*:*",
+      "https://*:*"
+    ]
+  },
+  "permissions": [
+    "core:event:default",
+    "allow-haven-remote"
+  ]
+}

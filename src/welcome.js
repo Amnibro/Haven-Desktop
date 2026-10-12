@@ -215,13 +215,16 @@
         let hostName = entry.url;
         try { hostName = new URL(entry.url).hostname; } catch {}
         const name = (entry.name && entry.name !== entry.url) ? entry.name : hostName;
-        item.innerHTML = `
-          <div style="display:flex;flex-direction:column;gap:2px;overflow:hidden;text-align:left;">
-            <span style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}</span>
-            <span style="font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${entry.url}</span>
-          </div>
-          <span style="color:var(--accent);font-weight:600;flex-shrink:0;margin-left:8px;">Connect →</span>
-        `;
+        const info = document.createElement('div');
+        info.style.cssText = 'display:flex;flex-direction:column;gap:2px;overflow:hidden;text-align:left;';
+        const nameEl = Object.assign(document.createElement('span'), { textContent: name });
+        nameEl.style.cssText = 'font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        const urlEl = Object.assign(document.createElement('span'), { textContent: entry.url });
+        urlEl.style.cssText = 'font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        const go = Object.assign(document.createElement('span'), { textContent: 'Connect \u2192' });
+        go.style.cssText = 'color:var(--accent);font-weight:600;flex-shrink:0;margin-left:8px;';
+        info.append(nameEl, urlEl);
+        item.append(info, go);
         item.onmouseenter = () => { item.style.borderColor = 'var(--accent)'; item.style.background = 'rgba(107, 79, 219, .12)'; };
         item.onmouseleave = () => { item.style.borderColor = 'var(--border)'; item.style.background = 'var(--surface2)'; };
         item.onclick = () => {
