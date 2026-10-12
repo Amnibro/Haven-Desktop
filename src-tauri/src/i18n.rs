@@ -79,6 +79,11 @@ const EN: &[(&str, &str)] = &[
     ("update.error", "Update error: {error}"),
     ("update.unavailable", "Auto-update is unavailable in this build"),
     ("update.close", "Dismiss"),
+    ("update.upToDate", "You're on the latest version, Haven Desktop v{version}."),
+    ("update.notPackaged", "Update checks only work in the installed app."),
+    ("update.later", "Later"),
+    ("update.installFailed", "The update could not be installed."),
+    ("menu.checkForUpdates", "Check for Updates"),
     ("serverList.gate.title", "Your server list"),
     ("serverList.gate.add", "Add \"{name}\" at {url} to your server list?"),
     ("serverList.gate.addBack", "Add \"{name}\" at {url} back to your server list? You removed it earlier."),
@@ -140,6 +145,9 @@ const PT_BR: &[(&str, &str)] = &[
     ("tray.quit", "Sair"),
     ("tray.tooltip", "Haven Desktop"),
     ("dialog.cancel", "Cancelar"),
+    ("update.upToDate", "Você já está na versão mais recente, Haven Desktop v{version}."),
+    ("update.notPackaged", "A verificação de atualizações só funciona no aplicativo instalado."),
+    ("menu.checkForUpdates", "Verificar atualizações"),
 ];
 
 fn lookup(locale: &str, key: &str) -> Option<&'static str> {

@@ -61,7 +61,11 @@ commands.allow = [
   "dialog_confirm",
   "dialog_prompt",
   "get_inject_script",
-  "theme_colors"
+  "theme_colors",
+  "update_state",
+  "update_download",
+  "update_install",
+  "update_dismiss"
 ]
 
 [[permission]]
@@ -114,5 +118,9 @@ commands.allow = [
   "dialog_alert",
   "dialog_confirm",
   "dialog_prompt",
-  "theme_colors"
+  "theme_colors",
+  "update_state",
+  "update_download",
+  "update_install",
+  "update_dismiss"
 ]

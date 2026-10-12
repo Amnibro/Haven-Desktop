@@ -1097,8 +1097,8 @@
     backToWelcome: () => invoke('nav_back_to_welcome'),
 
     update: {
-      download: async () => ({ errorKey: 'update.unavailable' }),
-      install: () => {},
+      download: () => invoke('update_download'),
+      install: () => invoke('update_install'),
     },
 
     audio: {
@@ -1777,6 +1777,41 @@
   listen('voice:ptt-toggle', () => pttToggleOnce('shortcut'));
   listen('voice:ptt-down', () => pttSetTalking(true, 'shortcut'));
   listen('voice:ptt-up', () => pttSetTalking(false, 'shortcut'));
+  (function updateBanner() {
+    if (window.opener) return;
+    let bar = null, labels = {};
+    const say = (key, values = {}) => Object.entries(values).reduce((text, [k, v]) => text.replaceAll(`{${k}}`, String(v)), labels[key] || key);
+    const remove = () => { bar?.remove(); bar = null; };
+    const show = (key, values, buttonKey, onClick) => {
+      remove();
+      const el = bar = document.createElement('div');
+      el.id = 'haven-update-banner';
+      el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999998;background:linear-gradient(135deg,#6b4fdb,#8b6ce7);color:#fff;display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.3);';
+      const msg = Object.assign(document.createElement('span'), { id: 'haven-update-msg', textContent: say(key, values) });
+      const btn = Object.assign(document.createElement('button'), { id: 'haven-update-btn', textContent: say(buttonKey), onclick: onClick });
+      btn.style.cssText = 'background:#fff;color:#6b4fdb;border:none;border-radius:4px;padding:4px 14px;font-weight:600;cursor:pointer;font-size:12px;';
+      const close = Object.assign(document.createElement('button'), { textContent: '\u2715', title: say('close'), onclick: () => { remove(); invoke('update_dismiss').catch(() => {}); } });
+      close.style.cssText = 'background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:16px;padding:0 4px;margin-left:4px;';
+      el.append(msg, btn, close);
+      document.body ? document.body.prepend(el) : document.addEventListener('DOMContentLoaded', () => bar === el && document.body.prepend(el), { once: true });
+    };
+    const message = (key, values) => { const m = document.getElementById('haven-update-msg'); if (m) m.textContent = say(key, values); };
+    const showDownloaded = () => show('downloaded', {}, 'restartNow', () => invoke('update_install').catch(() => {}));
+    const showAvailable = (version) => show('available', { version }, 'now', async () => {
+      const b = document.getElementById('haven-update-btn');
+      if (b) b.disabled = true;
+      message('downloading');
+      const res = await invoke('update_download').catch((err) => ({ error: String(err) }));
+      if (res?.error) message('failed', { error: res.error });
+    });
+    const loaded = invoke('update_state').catch((err) => { console.warn('[AutoUpdate] could not read the update state:', err); return null; }).then((r) => { labels = r?.labels || {}; return r; });
+    const later = (fn) => (p) => loaded.then(() => fn(p));
+    listen('update:available', later((p) => showAvailable(p?.version || '')));
+    listen('update:download-progress', later((p) => message('downloadingProgress', { percent: p?.percent ?? 0 })));
+    listen('update:downloaded', later(showDownloaded));
+    listen('update:error', later((p) => message('error', { error: p?.message || '' })));
+    loaded.then((r) => { if (!bar && r?.state) r.state.status === 'downloaded' ? showDownloaded() : showAvailable(r.state.version); });
+  })();
   // ── getDisplayMedia override ─────────────────────────────
   function installGetDisplayMediaOverride() {
     if (!navigator.mediaDevices?.getDisplayMedia) {

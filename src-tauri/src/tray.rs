@@ -8,8 +8,9 @@ use tauri::{
 
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let show_i = MenuItem::with_id(app, "show", state::t(app, "tray.show"), true, None::<&str>)?;
+    let check_i = MenuItem::with_id(app, "check", state::t(app, "menu.checkForUpdates"), true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", state::t(app, "tray.quit"), true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+    let menu = Menu::with_items(app, &[&show_i, &check_i, &quit_i])?;
 
     let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))?;
 
@@ -27,6 +28,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = win.set_focus();
                 }
             }
+            "check" => { let app = app.clone(); tauri::async_runtime::spawn(async move { crate::updates::check(&app, true).await }); }
             "quit" => quit_app(app),
             _ => {}
         })

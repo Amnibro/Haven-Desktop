@@ -9,43 +9,11 @@ mod server_manager;
 mod state;
 mod theme_icon;
 mod tray;
+mod updates;
 
 use state::AppState;
 use tauri::Manager;
 use tauri_plugin_store::StoreExt;
-
-/// Ask the GitHub release feed once at startup; on a newer build, offer to
-/// install it (signed with the key in ~/.tauri, verified against the pubkey
-/// in tauri.conf.json) and relaunch. Failures stay silent: offline is normal.
-fn check_for_update(app: tauri::AppHandle) {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
-    use tauri_plugin_updater::UpdaterExt;
-    // The Flatpak wraps the deb's binary, so the updater would try to install
-    // a deb from inside the sandbox. Flatpak users update the bundle instead.
-    if std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists() {
-        return;
-    }
-    tauri::async_runtime::spawn(async move {
-        let Ok(updater) = app.updater() else { return };
-        let Ok(Some(update)) = updater.check().await else { return };
-        let msg = format!(
-            "Haven Desktop {} is available (you have {}). Install it now? Haven restarts when it is done.",
-            update.version, update.current_version
-        );
-        let yes = app
-            .dialog()
-            .message(msg)
-            .title("Update available")
-            .buttons(MessageDialogButtons::OkCancelCustom("Install".into(), "Later".into()))
-            .blocking_show();
-        if !yes {
-            return;
-        }
-        if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
-            app.restart();
-        }
-    });
-}
 
 pub fn run() {
     tauri::Builder::default()
@@ -107,6 +75,10 @@ pub fn run() {
             commands::server_history_update_name,
             commands::server_list_get,
             commands::server_list_set_order,
+            updates::update_state,
+            updates::update_download,
+            updates::update_install,
+            updates::update_dismiss,
             commands::desktop_get_prefs,
             commands::desktop_set_start_on_login,
             commands::desktop_set_start_hidden,
@@ -151,7 +123,7 @@ pub fn run() {
                 theme_icon::apply(app.handle(), bg, fg);
             }
             cert_trust::migrate(app.handle());
-            check_for_update(app.handle().clone());
+            updates::start(app.handle().clone());
             // Saved mute / deafen / push-to-talk keys were only registered when
             // the settings page re-saved them, so after a restart they did nothing.
             let _ = commands::shortcuts_register(app.handle().clone(), serde_json::json!({}));

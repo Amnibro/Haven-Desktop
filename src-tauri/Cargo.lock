@@ -1707,6 +1707,7 @@ dependencies = [
  "tauri-plugin-updater",
  "thiserror 2.0.20",
  "tiny-skia",
+ "tokio",
  "url",
  "webkit2gtk",
  "webview2-com",
