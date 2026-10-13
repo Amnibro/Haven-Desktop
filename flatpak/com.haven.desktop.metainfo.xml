@@ -20,6 +20,7 @@
   <url type="bugtracker">https://github.com/Amnibro/Haven-Desktop/issues</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="2.6.1" date="2026-10-12"/>
     <release version="2.6.0" date="2026-10-12"/>
     <release version="2.5.6" date="2026-10-11"/>
   </releases>
