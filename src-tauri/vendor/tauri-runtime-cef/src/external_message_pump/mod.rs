@@ -65,7 +65,7 @@ const K_TIMER_DELAY_PLACEHOLDER: i64 = i32::MAX as i64;
 
 // The maximum number of milliseconds we're willing to wait between calls to
 // DoWork().
-const K_MAX_TIMER_DELAY: i64 = 1000 / 30; // 30fps
+const K_MAX_TIMER_DELAY: i64 = 100; // 10Hz fallback safety net; active work schedules exact delays
 
 /// Handle to the external message pump. Cloning shares the same underlying
 /// state; the backing platform resources are released when the last clone drops.
@@ -161,9 +161,9 @@ impl PumpState {
       // Execute the remaining work as soon as possible.
       self.on_schedule_message_pump_work(0);
     } else if !self.is_timer_pending() {
-      // Schedule a timer event at the maximum allowed time. This may be dropped
-      // in OnScheduleWork() if another timer event is already in-flight.
-      self.on_schedule_message_pump_work(K_TIMER_DELAY_PLACEHOLDER);
+      // Schedule a timer event at the maximum allowed time directly on the owner
+      // thread without writing to the cross-thread wakeup pipe.
+      self.on_schedule_work(K_TIMER_DELAY_PLACEHOLDER);
     }
   }
 

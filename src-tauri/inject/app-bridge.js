@@ -20,9 +20,20 @@
   };
   let patchTries = 0;
   const patchTimer = setInterval(() => (patchSocketEmit() || ++patchTries > 480) && clearInterval(patchTimer), 250);
-  window.__havenFocus = (f) => { havenFocused = !!f; window.app?.socket?.emit?.('visibility-change', { visible: !document.hidden }); };
-  document.addEventListener('DOMContentLoaded', () => { havenFocused = document.hasFocus(); });
+  const syncFocusAttr = () => {
+    const root = document.documentElement;
+    if (!root) return;
+    if (havenFocused) root.removeAttribute('data-haven-unfocused');
+    else root.setAttribute('data-haven-unfocused', '1');
+  };
+  window.__havenFocus = (f) => {
+    havenFocused = !!f;
+    syncFocusAttr();
+    window.app?.socket?.emit?.('visibility-change', { visible: !document.hidden });
+  };
+  document.addEventListener('DOMContentLoaded', () => { havenFocused = document.hasFocus(); syncFocusAttr(); });
   window.addEventListener('focus', () => havenFocused || window.__havenFocus(true));
+  window.addEventListener('blur', () => !havenFocused || window.__havenFocus(false));
 
   async function listen(event, handler) {
     const eventApi = window.__TAURI__?.event;
@@ -71,9 +82,11 @@
 
   if (document.documentElement) {
     document.documentElement.setAttribute('data-desktop-app', '1');
+    syncFocusAttr();
   } else {
     window.addEventListener('DOMContentLoaded', () => {
       document.documentElement.setAttribute('data-desktop-app', '1');
+      syncFocusAttr();
     }, { once: true });
   }
 
@@ -87,7 +100,13 @@
       + 'html[data-braid-layout="1"][data-desktop-app] #status-bar{display:none!important;height:0!important;min-height:0!important;padding:0!important;border:0!important;overflow:hidden!important}'
       + 'html[data-braid-layout="1"].braid-status-open[data-desktop-app] .status-bar,'
       + 'html[data-braid-layout="1"].braid-status-open[data-desktop-app] #status-bar{display:flex!important;height:auto!important;min-height:1.75rem!important;padding:.3125rem 1rem!important;overflow:visible!important}'
-      + 'html[data-braid-layout="1"] #app-body{flex:1 1 auto!important;height:auto!important;min-height:0}';
+      + 'html[data-braid-layout="1"] #app-body{flex:1 1 auto!important;height:auto!important;min-height:0}'
+      + '.sidebar-split .dm-section-pane[style*="flex"],html[data-braid-layout="1"] .dm-section-pane[style*="flex"]{max-height:none!important}'
+      + '.sidebar-split .dm-section-pane[style*="flex: 0 0 auto"],.sidebar-split .dm-section-pane[style*="flex:0 0 auto"]{min-height:0!important}'
+      + '.sidebar-split:has(.sidebar-split-handle.dragging) .dm-section-pane{transition:none!important}'
+      + '#pref-force-sdr-row,#pref-disable-gpu-vsync-row,#pref-unlimit-frame-rate-row{display:none!important}'
+      + 'html[data-braid-layout="1"] .brand .logo-sm,html[data-braid-layout="1"] .sidebar-header .logo-sm{animation:none!important;filter:drop-shadow(0 0 4px color-mix(in srgb,var(--accent) 45%,transparent)) drop-shadow(0 0 8px color-mix(in srgb,var(--accent) 22%,transparent))}'
+      + 'html[data-haven-unfocused="1"] *,html[data-haven-unfocused="1"] *::before,html[data-haven-unfocused="1"] *::after{animation-play-state:paused!important}';
     (document.head || document.documentElement).appendChild(el);
   }
   if (document.head) injectBraidDesktopCss();
@@ -854,6 +873,456 @@
       }
     };
   });
+
+  // ── Sidebar split resize normalization (ensures flex-grow sum >= 1 on all servers) ──
+  (function setupSidebarSplitFix() {
+    function normalizeSplitFlex() {
+      const cp = document.getElementById('channels-pane');
+      const dp = document.getElementById('dm-pane');
+      if (!cp || !dp) return;
+      const cg = parseFloat(cp.style.flexGrow);
+      const dg = parseFloat(dp.style.flexGrow);
+      if (cg > 0 && dg > 0 && cg + dg < 1.5) {
+        const sum = cg + dg || 1;
+        const r = Math.min(0.95, Math.max(0.05, cg / sum));
+        cp.style.flex = `${+(r * 100).toFixed(4)} 1 0`;
+        dp.style.flex = `${+((1 - r) * 100).toFixed(4)} 1 0`;
+      }
+    }
+    function bindSplitHandle() {
+      const handle = document.getElementById('sidebar-split-handle');
+      const cp = document.getElementById('channels-pane');
+      const dp = document.getElementById('dm-pane');
+      if (!handle || !cp || !dp || handle.dataset.havenDesktopSplitBound) return;
+      handle.dataset.havenDesktopSplitBound = '1';
+      const obs = new MutationObserver(normalizeSplitFlex);
+      obs.observe(cp, { attributes: true, attributeFilter: ['style'] });
+      obs.observe(dp, { attributes: true, attributeFilter: ['style'] });
+      normalizeSplitFlex();
+      handle.addEventListener('dblclick', () => {
+        cp.style.removeProperty('flex');
+        dp.style.removeProperty('flex');
+        try { localStorage.removeItem('haven_sidebar_split_ratio'); } catch {}
+      });
+    }
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', () => { bindSplitHandle(); setTimeout(bindSplitHandle, 1000); }, { once: true });
+    } else {
+      bindSplitHandle();
+      setTimeout(bindSplitHandle, 1000);
+    }
+  })();
+
+  // ── FFmpeg media transcoding bridge for proprietary codecs (H.264/HEVC/AAC on Linux CEF) ──
+  (function setupMediaTranscodeBridge() {
+    const _blobMap = new Map();
+    const _origCreateObjectURL = URL.createObjectURL.bind(URL);
+    const _origRevokeObjectURL = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = function (obj) {
+      const url = _origCreateObjectURL(obj);
+      if (obj instanceof Blob) _blobMap.set(url, obj);
+      return url;
+    };
+    URL.revokeObjectURL = function (url) {
+      setTimeout(() => _blobMap.delete(url), 60000);
+      return _origRevokeObjectURL(url);
+    };
+
+    const probe = document.createElement('video');
+    const canPlayH264 = !!(
+      probe.canPlayType('video/mp4; codecs="avc1.42E01E"') ||
+      probe.canPlayType('video/mp4; codecs="avc1.4D401E"')
+    );
+    const canPlayHevc = !!(
+      probe.canPlayType('video/mp4; codecs="hev1.1.6.L93.B0"') ||
+      probe.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"')
+    );
+    const canPlayAac = !!probe.canPlayType('audio/mp4; codecs="mp4a.40.2"');
+
+    // If the webview natively supports H.264, HEVC, and AAC, only use FFmpeg on actual decode errors
+    let ffmpegAvailable = true;
+    invoke('media_transcode_check').then((res) => {
+      ffmpegAvailable = !!(res && res.available);
+    }).catch(() => {
+      ffmpegAvailable = false;
+    });
+
+    const _transcodeCache = new Map(); // key: `${absUrl}|${audioOnly ? 'a' : 'v'}` -> Promise<string | null>
+    const _transcodedBlobs = new Set(); // blob: URLs produced by transcoding
+    const _errorListeners = new WeakMap(); // HTMLMediaElement -> Set<{ fn, opts }>
+
+    function getExtFromUrl(url) {
+      try {
+        const u = new URL(url, window.location.href);
+        const m = u.pathname.match(/\.([a-z0-9]{2,6})$/i);
+        return m ? m[1].toLowerCase() : '';
+      } catch {
+        const m = String(url || '').split(/[?#]/)[0].match(/\.([a-z0-9]{2,6})$/i);
+        return m ? m[1].toLowerCase() : '';
+      }
+    }
+
+    function needsProactiveTranscode(src, isAudio) {
+      if (!src || !ffmpegAvailable) return false;
+      if (_transcodedBlobs.has(src)) return false;
+      if (src.startsWith('blob:')) {
+        const blob = _blobMap.get(src);
+        if (!blob) return false;
+        const t = (blob.type || '').toLowerCase();
+        if (isAudio) {
+          return !canPlayAac && (t.includes('mp4') || t.includes('m4a') || t.includes('aac'));
+        }
+        return (!canPlayH264 && (t.includes('mp4') || t.includes('quicktime') || t.includes('m4v') || t.includes('x-matroska')))
+          || (!canPlayHevc && t.includes('quicktime'));
+      }
+      const ext = getExtFromUrl(src);
+      if (isAudio) {
+        return !canPlayAac && (ext === 'm4a' || ext === 'aac' || ext === 'mp4');
+      }
+      if (!canPlayH264 && (ext === 'mp4' || ext === 'm4v' || ext === 'mov' || ext === 'mkv')) return true;
+      if (!canPlayHevc && ext === 'mov') return true;
+      return false;
+    }
+
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      const chunk = 0x8000;
+      const parts = [];
+      for (let i = 0; i < bytes.length; i += chunk) {
+        parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)));
+      }
+      return btoa(parts.join(''));
+    }
+
+    function base64ToBlobUrl(b64, mime) {
+      const bin = atob(b64);
+      const len = bin.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: mime });
+      const url = _origCreateObjectURL(blob);
+      _transcodedBlobs.add(url);
+      return url;
+    }
+
+    async function transcodeSourceUrl(rawSrc, isAudio) {
+      if (!rawSrc || !ffmpegAvailable) return null;
+      if (_transcodedBlobs.has(rawSrc)) return rawSrc;
+      let absUrl = rawSrc;
+      if (!rawSrc.startsWith('blob:') && !rawSrc.startsWith('data:')) {
+        try { absUrl = new URL(rawSrc, window.location.href).href; } catch {}
+      }
+      const cacheKey = `${absUrl}|${isAudio ? 'a' : 'v'}`;
+      if (_transcodeCache.has(cacheKey)) return _transcodeCache.get(cacheKey);
+
+      const promise = (async () => {
+        try {
+          let buf;
+          let extHint = getExtFromUrl(absUrl) || (isAudio ? 'm4a' : 'mp4');
+          if (absUrl.startsWith('blob:')) {
+            const blob = _blobMap.get(absUrl);
+            if (!blob) return null;
+            buf = await blob.arrayBuffer();
+            if (blob.type.includes('quicktime')) extHint = 'mov';
+          } else {
+            const resp = await fetch(absUrl, { credentials: 'include' });
+            if (!resp.ok) return null;
+            buf = await resp.arrayBuffer();
+          }
+          if (!buf || !buf.byteLength) return null;
+          const dataB64 = arrayBufferToBase64(buf);
+          const res = await invoke('media_transcode', {
+            dataB64,
+            extHint,
+            audioOnly: !!isAudio,
+          });
+          if (!res || !res.ok || !res.dataB64) return null;
+          return base64ToBlobUrl(res.dataB64, res.mime || (isAudio ? 'audio/webm' : 'video/webm'));
+        } catch (err) {
+          console.warn('[Haven Desktop] Media transcode failed:', err);
+          return null;
+        }
+      })();
+
+      _transcodeCache.set(cacheKey, promise);
+      return promise;
+    }
+
+    function fireSavedErrors(el, ev) {
+      const set = _errorListeners.get(el);
+      if (set) {
+        for (const entry of Array.from(set)) {
+          if (entry.once) set.delete(entry);
+          try {
+            if (typeof entry.fn === 'function') entry.fn.call(el, ev);
+            else if (entry.fn && typeof entry.fn.handleEvent === 'function') entry.fn.handleEvent(ev);
+          } catch {}
+        }
+      }
+      if (typeof el.__havenOnError === 'function') {
+        try { el.__havenOnError.call(el, ev); } catch {}
+      }
+    }
+
+    const _origSetAttr = Element.prototype.setAttribute;
+    const _srcDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+    const _origPlay = HTMLMediaElement.prototype.play;
+    const _origAddEventListener = HTMLMediaElement.prototype.addEventListener;
+    const _origRemoveEventListener = HTMLMediaElement.prototype.removeEventListener;
+
+    function setRawMediaSrc(el, val) {
+      if (_srcDesc && _srcDesc.set) _srcDesc.set.call(el, val);
+      else _origSetAttr.call(el, 'src', val);
+    }
+
+    async function transcodeMediaElement(el, forcePlay = false) {
+      if (!el || !(el instanceof HTMLMediaElement) || !el.isConnected) return false;
+      if (el.dataset.havenTranscoded === '1') return true;
+      if (el.dataset.havenTranscodeFailed === '1') return false;
+      const rawSrc = el.dataset.havenOrigSrc || el.getAttribute('src') || (_srcDesc?.get ? _srcDesc.get.call(el) : '');
+      if (!rawSrc || _transcodedBlobs.has(rawSrc)) return false;
+      if (el._havenTranscodePromise) return el._havenTranscodePromise;
+
+      el.dataset.havenOrigSrc = rawSrc;
+      const isAudio = el.tagName === 'AUDIO';
+      const shouldPlay = forcePlay || !el.paused || el.autoplay || el.dataset.havenPlayRequested === '1';
+
+      el._havenTranscodePromise = (async () => {
+        const blobUrl = await transcodeSourceUrl(rawSrc, isAudio);
+        el._havenTranscodePromise = null;
+        if (!blobUrl) {
+          el.dataset.havenTranscodeFailed = '1';
+          return false;
+        }
+        el.dataset.havenTranscoded = '1';
+        setRawMediaSrc(el, blobUrl);
+        try { el.load(); } catch {}
+        if (shouldPlay || el.dataset.havenPlayRequested === '1') {
+          delete el.dataset.havenPlayRequested;
+          try { await _origPlay.call(el); } catch {}
+        }
+        return true;
+      })();
+
+      return el._havenTranscodePromise;
+    }
+
+    function hookMediaElement(el) {
+      if (!el || !(el instanceof HTMLMediaElement) || el._havenErrorHooked) return;
+      el._havenErrorHooked = true;
+      _origAddEventListener.call(el, 'play', () => {
+        if (!el.isConnected || el.dataset.havenTranscoded === '1' || el.dataset.havenTranscodeFailed === '1' || !ffmpegAvailable) return;
+        const rawSrc = el.dataset.havenOrigSrc || el.getAttribute('src') || '';
+        if (rawSrc && needsProactiveTranscode(rawSrc, el.tagName === 'AUDIO')) {
+          el.dataset.havenPlayRequested = '1';
+          transcodeMediaElement(el, true);
+        }
+      }, true);
+      _origAddEventListener.call(el, 'click', () => {
+        if (!el.isConnected || el.dataset.havenTranscoded === '1' || el.dataset.havenTranscodeFailed === '1' || !ffmpegAvailable) return;
+        const rawSrc = el.dataset.havenOrigSrc || el.getAttribute('src') || '';
+        if (rawSrc && (needsProactiveTranscode(rawSrc, el.tagName === 'AUDIO') || el.error)) {
+          el.dataset.havenPlayRequested = '1';
+          transcodeMediaElement(el, true);
+        }
+      }, true);
+      _origAddEventListener.call(el, 'error', async (ev) => {
+        // Off-DOM helper elements (e.g. _generateVideoThumbnail) should fail fast without spawning FFmpeg
+        if (!el.isConnected) return;
+        if (el.dataset.havenTranscoded === '1' || el.dataset.havenTranscodeFailed === '1' || !ffmpegAvailable) {
+          fireSavedErrors(el, ev);
+          return;
+        }
+        ev.stopImmediatePropagation();
+        if (!el.paused || el.autoplay || el.dataset.havenPlayRequested === '1') {
+          const ok = await transcodeMediaElement(el, true);
+          if (!ok) fireSavedErrors(el, ev);
+        }
+      }, true);
+    }
+
+    HTMLMediaElement.prototype.play = function () {
+      if (this.isConnected && ffmpegAvailable && this.dataset.havenTranscoded !== '1' && this.dataset.havenTranscodeFailed !== '1') {
+        const rawSrc = this.dataset.havenOrigSrc || this.getAttribute('src') || '';
+        if (rawSrc && (needsProactiveTranscode(rawSrc, this.tagName === 'AUDIO') || this.error)) {
+          hookMediaElement(this);
+          this.dataset.havenPlayRequested = '1';
+          return transcodeMediaElement(this, true).then((ok) => {
+            if (!ok) throw new DOMException('Failed to load because no supported source was found.', 'NotSupportedError');
+          });
+        }
+      }
+      return _origPlay.call(this);
+    };
+
+    // Intercept error listeners on HTMLMediaElement so _fallbackToDownload waits for FFmpeg transcode
+    HTMLMediaElement.prototype.addEventListener = function (type, listener, options) {
+      if (type === 'error' && listener) {
+        let set = _errorListeners.get(this);
+        if (!set) {
+          set = new Set();
+          _errorListeners.set(this, set);
+        }
+        const once = typeof options === 'object' && options ? !!options.once : false;
+        set.add({ fn: listener, once });
+        hookMediaElement(this);
+        const curSrc = this.dataset.havenOrigSrc || this.getAttribute('src') || '';
+        if (curSrc && needsProactiveTranscode(curSrc, this.tagName === 'AUDIO')) {
+          this.dataset.havenOrigSrc = curSrc;
+          if (this.isConnected && !this.autoplay) {
+            this.preload = 'none';
+          }
+        }
+        return;
+      }
+      return _origAddEventListener.call(this, type, listener, options);
+    };
+
+    HTMLMediaElement.prototype.removeEventListener = function (type, listener, options) {
+      if (type === 'error' && listener) {
+        const set = _errorListeners.get(this);
+        if (set) {
+          for (const entry of set) {
+            if (entry.fn === listener) set.delete(entry);
+          }
+        }
+        return;
+      }
+      return _origRemoveEventListener.call(this, type, listener, options);
+    };
+
+    Object.defineProperty(HTMLMediaElement.prototype, 'onerror', {
+      configurable: true,
+      get() { return this.__havenOnError || null; },
+      set(fn) {
+        this.__havenOnError = typeof fn === 'function' ? fn : null;
+        if (this.__havenOnError && !this._havenErrorHooked) {
+          this.addEventListener('error', () => {});
+        }
+      },
+    });
+
+    if (_srcDesc && _srcDesc.get && _srcDesc.set) {
+      Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+        configurable: true,
+        enumerable: _srcDesc.enumerable,
+        get() {
+          const actual = _srcDesc.get.call(this);
+          if (actual) return actual;
+          if (this.dataset.havenOrigSrc) {
+            try { return new URL(this.dataset.havenOrigSrc, window.location.href).href; } catch { return this.dataset.havenOrigSrc; }
+          }
+          return actual;
+        },
+        set(val) {
+          const strVal = String(val || '');
+          if (!strVal || _transcodedBlobs.has(strVal)) {
+            _srcDesc.set.call(this, val);
+            return;
+          }
+          this.dataset.havenOrigSrc = strVal;
+          delete this.dataset.havenTranscoded;
+          delete this.dataset.havenTranscodeFailed;
+          if (this.isConnected) {
+            hookMediaElement(this);
+            if (!this.autoplay && needsProactiveTranscode(strVal, this.tagName === 'AUDIO')) {
+              this.preload = 'none';
+            }
+          }
+          _srcDesc.set.call(this, val);
+        },
+      });
+    }
+
+    function scanMediaElements(root) {
+      if (!root || !root.querySelectorAll) return;
+      root.querySelectorAll('video, audio').forEach((el) => {
+        if (el.dataset.havenTranscoded === '1' || el._havenTranscodePromise) return;
+        hookMediaElement(el);
+        const src = el.dataset.havenOrigSrc || el.getAttribute('src') || '';
+        if (!src || _transcodedBlobs.has(src)) return;
+        el.dataset.havenOrigSrc = src;
+        if (needsProactiveTranscode(src, el.tagName === 'AUDIO')) {
+          if (el.autoplay) {
+            transcodeMediaElement(el, true);
+          } else {
+            el.preload = 'none';
+          }
+        }
+      });
+      // Recover any .file-attachment cards that collapsed before the hook ran, lazily without eager transcoding
+      root.querySelectorAll('.file-attachment[data-haven-fallback="1"]').forEach((box) => {
+        if (box.dataset.havenRecovering) return;
+        const link = box.querySelector('a.file-download-link');
+        if (!link) return;
+        const href = link.getAttribute('href') || '';
+        const name = link.getAttribute('download') || box.querySelector('.file-name')?.textContent || 'video.mp4';
+        const size = box.querySelector('.file-size')?.textContent || '';
+        const icon = box.querySelector('.file-icon')?.textContent || '🎬';
+        const isAudio = icon.includes('🎵') || /\.(m4a|aac|mp3|ogg|wav|flac)$/i.test(name);
+        if (!needsProactiveTranscode(href, isAudio)) return;
+        box.dataset.havenRecovering = '1';
+        delete box.dataset.havenFallback;
+        const info = document.createElement('div');
+        info.className = 'file-info';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'file-name';
+        nameSpan.textContent = name;
+        info.append(icon + ' ', nameSpan);
+        if (size) {
+          const sizeSpan = document.createElement('span');
+          sizeSpan.className = 'file-size';
+          sizeSpan.textContent = size;
+          info.append(' ', sizeSpan);
+        }
+        const dl = document.createElement('a');
+        dl.href = href;
+        dl.download = name;
+        dl.className = 'file-download-link';
+        dl.textContent = '⬇';
+        if (!href.startsWith('blob:')) { dl.target = '_blank'; dl.rel = 'noopener noreferrer'; }
+        info.appendChild(dl);
+        const mediaEl = document.createElement(isAudio ? 'audio' : 'video');
+        mediaEl.controls = true;
+        mediaEl.preload = 'none';
+        mediaEl.className = isAudio ? 'file-audio' : 'file-video';
+        mediaEl.dataset.havenOrigSrc = href;
+        setRawMediaSrc(mediaEl, href);
+        hookMediaElement(mediaEl);
+        if (isAudio) {
+          box.replaceChildren(info, mediaEl);
+        } else {
+          const wrap = document.createElement('div');
+          wrap.className = 'file-video-wrap';
+          wrap.appendChild(mediaEl);
+          box.replaceChildren(info, wrap);
+        }
+      });
+    }
+
+    function startObserver() {
+      const target = document.body || document.documentElement;
+      if (!target) return false;
+      scanMediaElements(target);
+      new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of m.addedNodes) {
+            if (node.nodeType !== 1) continue;
+            if (node.tagName === 'VIDEO' || node.tagName === 'AUDIO') {
+              scanMediaElements(node.parentElement || document);
+            } else if (node.querySelectorAll) {
+              scanMediaElements(node);
+            }
+          }
+        }
+      }).observe(target, { childList: true, subtree: true });
+      return true;
+    }
+
+    if (!startObserver()) {
+      window.addEventListener('DOMContentLoaded', startObserver, { once: true });
+    }
+  })();
 
   console.log('[Haven Desktop] Tauri app-bridge ready');
 })();

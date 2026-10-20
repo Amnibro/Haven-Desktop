@@ -56,6 +56,8 @@ commands.allow = [
   "dialog_confirm",
   "dialog_prompt",
   "get_inject_script",
+  "media_transcode_check",
+  "media_transcode",
   "theme_colors"
 ]
 
@@ -107,4 +109,6 @@ commands.allow = [
   "audio_is_supported",
   "audio_stop_capture",
   "share_picker_open",
+  "media_transcode_check",
+  "media_transcode",
 ]

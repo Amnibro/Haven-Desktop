@@ -35,6 +35,9 @@ struct SourceState {
   // The time when we need to do delayed work.
   delayed_work_time: Option<Instant>,
 
+  // Set when a <= 0ms wakeup was read from the pipe so Dispatch runs DoWork.
+  pending_immediate: bool,
+
   // We use a wakeup pipe to make sure we'll get out of the glib polling phase
   // when another thread has scheduled us to do some work. There is a glib
   // mechanism g_main_context_wakeup, but this won't guarantee that our event's
@@ -63,14 +66,16 @@ impl PlatformPump {
     // winit-gtk4 drives callbacks from GLib's default MainContext.
     let context = glib::MainContext::default();
 
-    // Create our wakeup pipe, which is used to flag when work was scheduled.
+    // Create our wakeup pipe with O_NONBLOCK | O_CLOEXEC so we can drain all
+    // pending wakeup messages in one pass and never leak FDs to child processes.
     let mut fds = [0; 2];
-    let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
+    let ret = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_NONBLOCK | libc::O_CLOEXEC) };
     assert_eq!(ret, 0, "failed to create CEF message pump wakeup pipe");
 
     let mut source_state = Box::new(SourceState {
       state,
       delayed_work_time: None,
+      pending_immediate: false,
       wakeup_pipe_read: fds[0],
       wakeup_pipe_write: fds[1],
       wakeup_gpollfd: Box::new(ffi::GPollFD {
@@ -110,16 +115,13 @@ impl PlatformPump {
     // This can be called on any thread, so we don't want to touch any state
     // variables as we would then need locks all over. This ensures that if we
     // are sleeping in a poll that we will wake up.
-    let written = retry_eintr(|| unsafe {
+    let _ = retry_eintr(|| unsafe {
       libc::write(
         self.source_state.wakeup_pipe_write,
         (&delay_ms as *const i64).cast(),
         mem::size_of::<i64>(),
       )
     });
-    if written != mem::size_of::<i64>() as isize {
-      log::error!("could not write to the CEF message pump wakeup pipe");
-    }
   }
 
   pub(super) fn set_timer(&mut self, delay_ms: i64) {
@@ -134,7 +136,8 @@ impl PlatformPump {
   }
 
   pub(super) fn is_timer_pending(&self) -> bool {
-    get_time_interval_milliseconds(self.source_state.delayed_work_time) > 0
+    self.source_state.pending_immediate
+      || get_time_interval_milliseconds(self.source_state.delayed_work_time) > 0
   }
 }
 
@@ -190,6 +193,9 @@ unsafe fn source_state(source: *mut ffi::GSource) -> *mut SourceState {
 
 // Return the timeout we want passed to poll.
 unsafe fn handle_prepare(source_state: *mut SourceState) -> c_int {
+  if unsafe { (*source_state).pending_immediate } {
+    return 0;
+  }
   // We don't think we have work to do, but make sure not to block longer than
   // the next time we need to run delayed work.
   let delayed_work_time = unsafe { (*source_state).delayed_work_time };
@@ -197,38 +203,49 @@ unsafe fn handle_prepare(source_state: *mut SourceState) -> c_int {
 }
 
 unsafe fn handle_check(source_state: *mut SourceState) -> bool {
-  // We usually have a single message on the wakeup pipe, since we are only
-  // signaled when the queue went from empty to non-empty, but there can be
-  // two messages if a task posted a task, hence we read at most two bytes.
-  // The glib poll will tell us whether there was data, so this read shouldn't
-  // block.
   let have_wakeup = {
     let wakeup_gpollfd = unsafe { &*(*source_state).wakeup_gpollfd };
     (wakeup_gpollfd.revents & ffi::G_IO_IN as u16) != 0
   };
   if have_wakeup {
-    let mut delay_ms = [0_i64; 2];
-    let num_bytes = retry_eintr(|| unsafe {
-      libc::read(
-        (*source_state).wakeup_pipe_read,
-        delay_ms.as_mut_ptr().cast(),
-        mem::size_of::<i64>() * 2,
-      )
-    });
+    let mut min_delay: Option<i64> = None;
+    let mut buf = [0_i64; 32];
+    loop {
+      let num_bytes = retry_eintr(|| unsafe {
+        libc::read(
+          (*source_state).wakeup_pipe_read,
+          buf.as_mut_ptr().cast(),
+          mem::size_of_val(&buf),
+        )
+      });
+      if num_bytes <= 0 {
+        break;
+      }
+      let count = (num_bytes as usize) / mem::size_of::<i64>();
+      for &d in &buf[..count] {
+        min_delay = Some(match min_delay {
+          Some(cur) => cur.min(d),
+          None => d,
+        });
+      }
+      if (num_bytes as usize) < mem::size_of_val(&buf) {
+        break;
+      }
+    }
+    if let Some(delay) = min_delay {
+      if delay <= 0 {
+        unsafe {
+          (*source_state).delayed_work_time = None;
+          (*source_state).pending_immediate = true;
+        }
+      } else if let Some(state) = unsafe { (*source_state).state.upgrade() } {
+        state.on_schedule_work(delay);
+      }
+    }
+  }
 
-    if num_bytes < mem::size_of::<i64>() as isize {
-      log::error!("error reading from the CEF message pump wakeup pipe");
-    }
-    if num_bytes == mem::size_of::<i64>() as isize
-      && let Some(state) = unsafe { (*source_state).state.upgrade() }
-    {
-      state.on_schedule_work(delay_ms[0]);
-    }
-    if num_bytes == (mem::size_of::<i64>() * 2) as isize
-      && let Some(state) = unsafe { (*source_state).state.upgrade() }
-    {
-      state.on_schedule_work(delay_ms[1]);
-    }
+  if unsafe { (*source_state).pending_immediate } {
+    return true;
   }
 
   let delayed_work_time = unsafe { (*source_state).delayed_work_time };
@@ -242,6 +259,7 @@ unsafe fn handle_check(source_state: *mut SourceState) -> bool {
 }
 
 unsafe fn handle_dispatch(source_state: *mut SourceState) {
+  unsafe { (*source_state).pending_immediate = false };
   if let Some(state) = unsafe { (*source_state).state.upgrade() } {
     state.on_timer_timeout();
   }

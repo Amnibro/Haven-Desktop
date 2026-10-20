@@ -29,7 +29,7 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     let lang = i18n::resolve_locale(prefs.get("language").and_then(|v| v.as_str()).unwrap_or("auto"), &i18n::system_languages());
     #[cfg(target_os = "linux")]
-    let cef = [("forceSDR", "force-color-profile", Some("srgb")), ("disableGpuVsync", "--disable-gpu-vsync", None), ("unlimitFrameRate", "--disable-frame-rate-limit", None)].into_iter().filter(|(k, ..)| prefs.get(*k).and_then(|v| v.as_bool()).unwrap_or(false)).fold(tauri_runtime_cef::Cef::default(), |c, (_, s, v)| c.command_line_arg(s, v.map(String::from))).accept_language_list(if lang == "en" { "en-US,en".to_string() } else { format!("{lang},{},en-US,en", lang.split('-').next().unwrap_or("en")) }).javascript_flags("--max-old-space-size=512").command_line_arg("--disable-gpu-memory-buffer-video-frames", None::<String>).command_line_arg("image-decode-ct", Some("3")).command_line_arg("force-gpu-mem-available-mb", Some("256")).command_line_arg("password-store", Some("basic")).command_line_arg("--disable-extensions", None::<String>).command_line_arg("--disable-background-timer-throttling", None::<String>).command_line_arg("--disable-renderer-backgrounding", None::<String>).command_line_arg("--disable-backgrounding-occluded-windows", None::<String>).disable_features(["LocalNetworkAccessChecks", "IntensiveWakeUpThrottling", "CalculateNativeWinOcclusion", "AutofillServerCommunication"]).enable_features(["WebRTCPipeWireCapturer"]);
+    let cef = [("forceSDR", "force-color-profile", Some("srgb"))].into_iter().filter(|(k, ..)| prefs.get(*k).and_then(|v| v.as_bool()).unwrap_or(false)).fold(tauri_runtime_cef::Cef::default(), |c, (_, s, v)| c.command_line_arg(s, v.map(String::from))).accept_language_list(if lang == "en" { "en-US,en".to_string() } else { format!("{lang},{},en-US,en", lang.split('-').next().unwrap_or("en")) }).javascript_flags("--max-old-space-size=512").command_line_arg("--disable-gpu-memory-buffer-video-frames", None::<String>).command_line_arg("image-decode-ct", Some("3")).command_line_arg("force-gpu-mem-available-mb", Some("256")).command_line_arg("password-store", Some("basic")).command_line_arg("--disable-extensions", None::<String>).disable_features(["LocalNetworkAccessChecks", "AutofillServerCommunication"]).enable_features(["WebRTCPipeWireCapturer"]);
     #[cfg(target_os = "linux")]
     tauri_runtime_cef::grant_display_capture(true);
     #[cfg(all(target_os = "linux", debug_assertions))]
@@ -107,6 +107,8 @@ pub fn run() {
             commands::dialog_confirm,
             commands::dialog_prompt,
             commands::get_inject_script,
+            commands::media_transcode_check,
+            commands::media_transcode,
             theme_icon::theme_colors,
         ])
         .setup(move |app| {
