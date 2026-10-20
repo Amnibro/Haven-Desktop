@@ -23,6 +23,68 @@ use gtk::glib::{self, ffi, translate::ToGlibPtr};
 
 use super::PumpState;
 
+const IDLE_POLL_MS: c_int = 7;
+#[repr(C)]
+struct TamedFuncs {
+  funcs: ffi::GSourceFuncs,
+  orig: *const ffi::GSourceFuncs,
+}
+thread_local! {
+  static TAMED: std::cell::RefCell<Vec<Box<TamedFuncs>>> = const { std::cell::RefCell::new(Vec::new()) };
+  static IDLE: std::cell::RefCell<std::collections::HashSet<usize>> = std::cell::RefCell::new(std::collections::HashSet::new());
+  static SCANNED: std::cell::Cell<c_uint> = const { std::cell::Cell::new(0) };
+  static LAST_SCAN: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+}
+unsafe extern "C" fn tamed_prepare(source: *mut ffi::GSource, timeout_ms: *mut c_int) -> ffi::gboolean {
+  let orig = unsafe { (*((*source).source_funcs as *const TamedFuncs)).orig };
+  let ready = unsafe { (*orig).prepare.map_or(ffi::GFALSE, |f| f(source, timeout_ms)) };
+  if ready == ffi::GFALSE && !timeout_ms.is_null() && unsafe { *timeout_ms } == 0 && IDLE.with(|i| i.borrow().contains(&(source as usize))) {
+    unsafe { *timeout_ms = IDLE_POLL_MS };
+  }
+  ready
+}
+unsafe extern "C" fn tamed_check(source: *mut ffi::GSource) -> ffi::gboolean {
+  let orig = unsafe { (*((*source).source_funcs as *const TamedFuncs)).orig };
+  let ready = unsafe { (*orig).check.map_or(ffi::GFALSE, |f| f(source)) };
+  IDLE.with(|i| { let mut i = i.borrow_mut(); if ready == ffi::GFALSE { i.insert(source as usize); } else { i.remove(&(source as usize)); } });
+  ready
+}
+fn from_libcef(f: *const std::ffi::c_void) -> bool {
+  let mut info: libc::Dl_info = unsafe { mem::zeroed() };
+  (unsafe { libc::dladdr(f, &mut info) }) != 0 && !info.dli_fname.is_null() && unsafe { std::ffi::CStr::from_ptr(info.dli_fname) }.to_bytes().windows(6).any(|w| w == b"libcef")
+}
+pub(crate) fn tame_cef_sources() {
+  if LAST_SCAN.with(|l| l.get().is_some_and(|t| t.elapsed() < Duration::from_secs(2))) {
+    return;
+  }
+  LAST_SCAN.with(|l| l.set(Some(Instant::now())));
+  let context: *mut ffi::GMainContext = glib::MainContext::default().to_glib_none().0;
+  let top = unsafe { let probe = ffi::g_idle_source_new(); let id = ffi::g_source_attach(probe, context); ffi::g_source_destroy(probe); ffi::g_source_unref(probe); id };
+  for id in SCANNED.with(|s| s.replace(top)).max(1)..top {
+    let source = unsafe { ffi::g_main_context_find_source_by_id(context, id) };
+    if source.is_null() {
+      continue;
+    }
+    let funcs = unsafe { (*source).source_funcs };
+    let Some(prepare) = (unsafe { (*funcs).prepare }) else { continue };
+    if prepare as usize == tamed_prepare as usize || !from_libcef(prepare as *const std::ffi::c_void) {
+      continue;
+    }
+    let tamed = TAMED.with(|t| {
+      let mut t = t.borrow_mut();
+      if let Some(x) = t.iter().find(|x| x.orig == funcs) {
+        return &x.funcs as *const ffi::GSourceFuncs;
+      }
+      let mut copy = unsafe { *funcs };
+      copy.prepare = Some(tamed_prepare);
+      copy.check = Some(tamed_check);
+      t.push(Box::new(TamedFuncs { funcs: copy, orig: funcs }));
+      &t.last().unwrap().funcs as *const ffi::GSourceFuncs
+    });
+    unsafe { (*source).source_funcs = tamed as *mut ffi::GSourceFuncs };
+  }
+}
+
 #[repr(C)]
 struct WorkSource {
   source: ffi::GSource,

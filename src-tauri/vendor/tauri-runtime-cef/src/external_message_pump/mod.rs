@@ -54,6 +54,14 @@ mod windows;
   target_os = "openbsd"
 ))]
 use linux::PlatformPump;
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+pub(crate) use linux::tame_cef_sources;
 #[cfg(target_os = "macos")]
 use macos::PlatformPump;
 #[cfg(windows)]

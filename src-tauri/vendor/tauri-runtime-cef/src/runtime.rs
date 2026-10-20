@@ -2263,6 +2263,14 @@ impl<T: UserEvent> ApplicationHandler for WinitCefApp<T> {
       target_os = "openbsd"
     ))]
     self.apply_pending_host_layouts();
+    #[cfg(any(
+      target_os = "linux",
+      target_os = "dragonfly",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd"
+    ))]
+    crate::external_message_pump::tame_cef_sources();
     self.run_callback(RunEvent::MainEventsCleared);
   }
 
@@ -3394,6 +3402,14 @@ impl<T: UserEvent> CefRuntime<T> {
       context.cef_pump.do_work();
       std::thread::sleep(Duration::from_millis(1));
     }
+    #[cfg(any(
+      target_os = "linux",
+      target_os = "dragonfly",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd"
+    ))]
+    crate::external_message_pump::tame_cef_sources();
 
     // Local state exists only once the context is initialized, and
     // `preference_manager_get_global` has to be called on the browser UI thread — which
