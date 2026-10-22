@@ -1563,7 +1563,9 @@
 
       // 1. If WebKit already gave us real File objects, route directly into active composer
       if (realFiles.length > 0) {
+        if (target?.closest?.('textarea, input, [contenteditable]:not([contenteditable="false"])')) return;
         e.preventDefault();
+        e.stopImmediatePropagation();
         queueFilesIntoActiveHavenComposer(realFiles, target);
         return;
       }
@@ -1715,6 +1717,7 @@
         return;
       }
       e.preventDefault();
+      e.stopPropagation();
       document.getElementById('message-area')?.classList.remove('drag-over');
       const files = Array.from(e.dataTransfer.files);
       queueFilesIntoActiveHavenComposer(files, e.target);

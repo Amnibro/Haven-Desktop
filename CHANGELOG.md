@@ -2,6 +2,11 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## Unreleased
+
+- **Pasted and dropped files attach once.** Pasting files or a screenshot into a message box on Linux queued every file twice, and dropping files on the chat did the same on Windows, macOS and Linux. Each file now attaches once, and pasting into a thread, DM pop-out or forum post goes to that box.
+- **Certificates from the distrusted eMudhra (emSign) CA keys are refused** (rustls-webpki 0.103.16, webpki-root-certs 1.0.10).
+
 ## v2.6.1-tauri (2026-10-12)
 
 Works on VPNs, guest Wi-Fi, trusted networks and mobile hotspots without confusing questions. Level with Electron 1.6.2.
