@@ -669,7 +669,10 @@
       if (pick.audio && !(await buildAudioPipeline())) { invoke('audio_stop_capture').catch(() => {}); pick.audio = false; }
       _capturedAudioPid = pick.audio ? 'native' : null;
       let stream;
-      try { stream = await orig(Object.assign({}, constraints || {}, { audio: false })); } catch (e) { if (pick.audio) { teardownAudioPipeline(); invoke('audio_stop_capture').catch(() => {}); } throw e; }
+      const v = constraints?.video || {}, lim = (x) => typeof x === 'number' ? x : x?.max ?? x?.ideal;
+      const desktopWindow = () => navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: Object.fromEntries(Object.entries({ chromeMediaSource: 'desktop', chromeMediaSourceId: `window:${1 + Math.floor(Math.random() * 2e9)}:0`, maxWidth: lim(v.width), maxHeight: lim(v.height), maxFrameRate: lim(v.frameRate) }).filter(([, x]) => x !== undefined)) } });
+      const screen = () => orig(Object.assign({}, constraints || {}, { audio: false }));
+      try { stream = await (pick.window ? desktopWindow().catch((e) => e?.name === 'NotAllowedError' ? Promise.reject(e) : screen()) : screen()); } catch (e) { if (pick.audio) { teardownAudioPipeline(); invoke('audio_stop_capture').catch(() => {}); } throw e; }
       if (_capturedAudioPid) {
         const timeoutMs = 8000;
         const start = Date.now();

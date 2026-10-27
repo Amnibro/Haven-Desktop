@@ -3,12 +3,13 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
-type Answer = Option<u32>;
+type Answer = Option<(u32, bool)>;
 static PENDING: Lazy<Mutex<Option<tauri::async_runtime::Sender<Answer>>>> = Lazy::new(|| Mutex::new(None));
 #[derive(Serialize)]
 pub struct ShareChoice {
     ok: bool,
     audio: bool,
+    window: bool,
 }
 fn answer(a: Answer) {
     if let Some(tx) = PENDING.lock().take() {
@@ -18,7 +19,7 @@ fn answer(a: Answer) {
 #[tauri::command]
 pub async fn share_picker_open(app: AppHandle) -> Result<ShareChoice, String> {
     if !audio::is_supported() {
-        return Ok(ShareChoice { ok: true, audio: false });
+        return Ok(ShareChoice { ok: true, audio: false, window: false });
     }
     let (tx, mut rx) = tauri::async_runtime::channel::<Answer>(1);
     answer(None);
@@ -37,16 +38,16 @@ pub async fn share_picker_open(app: AppHandle) -> Result<ShareChoice, String> {
         }
     });
     let picked = rx.recv().await.flatten();
-    let Some(pid) = picked else { return Ok(ShareChoice { ok: false, audio: false }) };
+    let Some((pid, window)) = picked else { return Ok(ShareChoice { ok: false, audio: false, window: false }) };
     let audio = pid != 0 && {
         audio::set_emitter(app.clone());
         audio::start_capture(pid, "include")
     };
-    Ok(ShareChoice { ok: true, audio })
+    Ok(ShareChoice { ok: true, audio, window })
 }
 #[tauri::command]
-pub fn share_picker_choose(app: AppHandle, cancelled: bool, pid: Option<u32>) {
-    answer((!cancelled).then(|| pid.unwrap_or(0)));
+pub fn share_picker_choose(app: AppHandle, cancelled: bool, pid: Option<u32>, window: Option<bool>) {
+    answer((!cancelled).then(|| (pid.unwrap_or(0), window.unwrap_or(false))));
     if let Some(w) = app.get_webview_window("share-picker") {
         let _ = w.destroy();
     }

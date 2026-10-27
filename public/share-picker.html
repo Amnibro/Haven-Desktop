@@ -20,16 +20,26 @@ button{border:1px solid var(--stroke);background:var(--elev);color:var(--text);b
 button.go{background:var(--accent);border-color:var(--accent);color:#fff}
 button:hover{filter:brightness(1.12)}
 .empty{padding:18px 14px;color:var(--dim)}
+.kind{display:flex;gap:4px;padding:3px;margin:0 0 14px;border:1px solid var(--stroke);border-radius:8px;background:var(--elev)}
+.kind button{flex:1;border:0;background:none;color:var(--dim);padding:7px 0}
+.kind button[aria-pressed=true]{background:var(--accent);color:#fff}
+h2{font-size:13px;font-weight:600;color:var(--dim);margin:0 0 7px}
 </style></head><body><div class="wrap">
 <h1>Share your screen</h1>
-<p class="sub">Pick an app whose sound should go with your screen. Next, your desktop asks which screen or window to share.</p>
+<div class="kind" role="group" aria-label="What to share"><button type="button" data-kind="screen" aria-pressed="true">Screen</button><button type="button" data-kind="window" aria-pressed="false">Window</button></div>
+<p class="sub" id="sub"></p>
+<h2>Sound</h2>
 <div class="list" id="list"><label><input type="radio" name="a" value="0" checked><span class="ic">&#128263;</span><span class="n">No audio</span></label></div>
 <p class="note" id="note"></p>
 <div class="row"><button id="cancel">Cancel</button><button class="go" id="go">Continue</button></div>
 </div><script>
 const inv=(c,a)=>window.__TAURI_INTERNALS__.invoke(c,a);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function done(cancelled){const v=document.querySelector('input[name=a]:checked');inv('share_picker_choose',{cancelled,pid:cancelled?null:Number(v?v.value:0)})}
+let kind='screen';try{kind=localStorage.getItem('haven-share-kind')==='window'?'window':'screen'}catch{}
+const setKind=k=>{kind=k;document.querySelectorAll('.kind button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.kind===k)));document.getElementById('sub').textContent=k==='window'?'Next, your desktop asks which window to share. Pick an app below to send its sound too.':'Next, your desktop asks which screen to share. Pick an app below to send its sound too.';try{localStorage.setItem('haven-share-kind',k)}catch{}};
+document.querySelectorAll('.kind button').forEach(b=>b.onclick=()=>setKind(b.dataset.kind));
+setKind(kind);
+function done(cancelled){const v=document.querySelector('input[name=a]:checked');inv('share_picker_choose',{cancelled,pid:cancelled?null:Number(v?v.value:0),window:kind==='window'})}
 document.getElementById('cancel').onclick=()=>done(true);
 document.getElementById('go').onclick=()=>done(false);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')done(true);if(e.key==='Enter')done(false)});
