@@ -394,6 +394,7 @@ void PulseCapture::captureLoop() {
     // PulseAudio path: move the app to the null sink directly
     // (the old approach) and use a loopback for monitoring.
     //
+    uint32_t routeSink = PA_INVALID_INDEX;
     if (isPipeWire && !origSinkLookup.name.empty()) {
         // PipeWire path: Try module-combine-sink to keep the app's original
         // output alive while teeing audio to our capture sink.
@@ -432,6 +433,7 @@ void PulseCapture::captureLoop() {
                 op = pa_context_move_sink_input_by_index(pa.ctx, targetSinkInput, csl.idx, successCb, &od);
                 if (op) { while (!od.done) pa.iterateBlock(); pa_operation_unref(op); }
                 combineSinkOk = true;
+                routeSink = csl.idx;
             }
         }
 
@@ -460,6 +462,7 @@ void PulseCapture::captureLoop() {
             OpDone od;
             op = pa_context_move_sink_input_by_index(pa.ctx, targetSinkInput, sl.idx, successCb, &od);
             if (op) { while (!od.done) pa.iterateBlock(); pa_operation_unref(op); }
+            routeSink = sl.idx;
         }
 
         // Loopback null sink → default output so user still hears the app
@@ -483,10 +486,13 @@ void PulseCapture::captureLoop() {
     ss.channels = 1;
 
     int err = 0;
+    pa_buffer_attr ba;
+    ba.maxlength = ba.tlength = ba.prebuf = ba.minreq = (uint32_t)-1;
+    ba.fragsize = 960 * sizeof(float);
     pa_simple* rec = pa_simple_new(
         nullptr, "HavenDesktop", PA_STREAM_RECORD,
         "HavenCapture.monitor", "Per-App Capture",
-        &ss, nullptr, nullptr, &err
+        &ss, nullptr, &ba, &err
     );
 
     if (!rec) {
@@ -525,6 +531,25 @@ void PulseCapture::captureLoop() {
         }
     }
 
+    std::thread follower([this, routeSink]() {
+        PaSync fp;
+        if (routeSink == PA_INVALID_INDEX || !fp.connect()) return;
+        while (m_running) {
+            usleep(100000);
+            SinkInputEnumData fe;
+            pa_operation* fo = pa_context_get_sink_input_info_list(fp.ctx, sinkInputCb, &fe);
+            if (!fo) continue;
+            while (!fe.done) fp.iterateBlock();
+            pa_operation_unref(fo);
+            for (auto& s : fe.inputs) {
+                if (s.pid != m_targetPid || s.sinkIndex == routeSink) continue;
+                OpDone od;
+                pa_operation* mo = pa_context_move_sink_input_by_index(fp.ctx, s.index, routeSink, successCb, &od);
+                if (mo) { while (!od.done) fp.iterateBlock(); pa_operation_unref(mo); }
+            }
+        }
+    });
+
     // Read PCM data in ~10 ms chunks
     const size_t chunkFrames = 480; // 10 ms at 48 kHz
     std::vector<float> buf(chunkFrames);
@@ -540,6 +565,7 @@ void PulseCapture::captureLoop() {
         }
     }
 
+    follower.join();
     pa_simple_free(rec);
 
     // ── Step 6: Restore original sink ─────────────────────
