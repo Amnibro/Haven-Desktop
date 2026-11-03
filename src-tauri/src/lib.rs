@@ -85,6 +85,8 @@ pub fn run() {
             commands::shortcuts_get,
             commands::shortcuts_register,
             commands::music_media_keys,
+            commands::server_mute_get_all,
+            commands::server_mute_set,
             commands::clipboard_write_text,
             commands::clipboard_write_image,
             commands::clipboard_read_image,

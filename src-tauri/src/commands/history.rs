@@ -1,7 +1,7 @@
 use crate::server_list::{self as list, Plan, PromptText, Request};
 use crate::state::{self, AppState};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager, Webview};
+use tauri::{AppHandle, Emitter, Manager, Webview};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 pub enum Sender { Local, Page(String) }
 pub fn sender(app: &AppHandle, webview: &Webview) -> Option<Sender> {
@@ -125,4 +125,24 @@ pub fn server_list_set_order(app: AppHandle, webview: Webview, urls: Value) -> b
     let before = current.clone();
     list::set_order(&mut current, &urls);
     list::save(&app, &current, &before)
+}
+fn origin_of(url: &str) -> Option<String> { url::Url::parse(url).ok().filter(|u| matches!(u.scheme(), "http" | "https")).map(|u| u.origin().ascii_serialization()) }
+#[tauri::command]
+pub fn server_mute_get_all(app: AppHandle, webview: Webview) -> Value {
+    sender(&app, &webview).and_then(|_| state::get_value(&app, "serverMutes").ok()).filter(Value::is_object).unwrap_or(json!({}))
+}
+#[tauri::command]
+pub fn server_mute_set(app: AppHandle, webview: Webview, url: String, mode: Option<String>) -> bool {
+    let (Some(who), Some(key)) = (sender(&app, &webview), origin_of(&url)) else { return false };
+    let own = matches!(&who, Sender::Page(p) if origin_of(p).as_deref() == Some(key.as_str()));
+    let map = |k: &str| state::get_value(&app, k).ok().and_then(|v| v.as_object().cloned()).unwrap_or_default();
+    let (before, waiting) = (map("serverMutes"), map("serverMutesPending"));
+    let (mut mutes, mut pending) = (before.clone(), waiting.clone());
+    let asked = mode.filter(|m| m == "all" || m == "mentions").map_or(Value::Null, Value::from);
+    let held = if own { pending.remove(&key) } else { pending.insert(key.clone(), asked.clone()); None };
+    let next = held.clone().unwrap_or_else(|| asked.clone());
+    let _ = if next.is_null() { mutes.remove(&key) } else { mutes.insert(key.clone(), next.clone()) };
+    let _ = (mutes != before || pending != waiting).then(|| state::store(&app).map(|s| { s.set("serverMutes", Value::Object(mutes)); s.set("serverMutesPending", Value::Object(pending)); s.save() }));
+    let _ = (!own || held.is_some_and(|h| h != asked)).then(|| app.emit("server-mute:changed", json!({ "url": key, "mode": next })));
+    true
 }

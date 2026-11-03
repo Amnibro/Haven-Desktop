@@ -1178,6 +1178,11 @@
     },
 
     getServerBadges: () => invoke('get_server_badges'),
+    serverMute: {
+      getAll: () => invoke('server_mute_get_all'),
+      set: (url, mode) => invoke('server_mute_set', { url: String(url || ''), mode: mode == null ? null : String(mode) }),
+      onChanged: (cb) => typeof cb === 'function' && listen('server-mute:changed', (data) => { try { cb(data); } catch (err) { console.warn('[Haven] server mute listener failed:', err.message); } }),
+    },
     reportKnownServerUrls: (urls) => invoke('report_known_server_urls', { urls }),
   };
 
