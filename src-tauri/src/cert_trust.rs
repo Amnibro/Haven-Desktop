@@ -10,17 +10,23 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 #[derive(Debug, PartialEq)]
-pub enum Verdict { Local, Pinned, Changed, Grandfathered, Unknown }
+pub enum Verdict { Local, LocalFirst, Pinned, Changed, Grandfathered, Unknown }
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Kind { Retry, Foreign, Captive, Trust }
 const BUNDLE: &str = include_str!("../certs/tls_intermediates.pem");
 static POOL: Lazy<RwLock<Vec<Vec<u8>>>> = Lazy::new(|| RwLock::new(ders(BUNDLE)));
 static AIA_DIR: Lazy<RwLock<Option<std::path::PathBuf>>> = Lazy::new(|| RwLock::new(None));
 pub fn normalize_host(h: &str) -> String { h.trim().to_lowercase().trim_start_matches('[').trim_end_matches(']').trim_end_matches('.').to_string() }
-pub fn is_local_host(raw: &str) -> bool {
+pub fn is_local_host(raw: &str) -> bool { host_scope(raw) > 0 }
+pub fn host_scope(raw: &str) -> u8 {
     let h = normalize_host(raw);
-    let v4 = |s: &str| s.parse::<std::net::Ipv4Addr>().ok().map(|ip| { let [a, b, ..] = ip.octets(); a == 127 || a == 10 || (a == 172 && (16..=31).contains(&b)) || (a == 192 && b == 168) || (a == 169 && b == 254) });
-    !h.is_empty() && (h == "localhost" || h.ends_with(".localhost") || h.ends_with(".local") || h == "::1" || v4(&h).or_else(|| h.strip_prefix("::ffff:").and_then(v4)).unwrap_or_else(|| h.parse::<std::net::Ipv6Addr>().map(|ip| { let s = ip.segments()[0]; (s & 0xffc0) == 0xfe80 || (s & 0xfe00) == 0xfc00 }).unwrap_or(false)))
+    let v4 = |s: &str| s.parse::<std::net::Ipv4Addr>().ok().map(|ip| { let [a, b, ..] = ip.octets(); if a == 127 { 2 } else { (a == 10 || (a == 172 && (16..=31).contains(&b)) || (a == 192 && b == 168) || (a == 169 && b == 254)) as u8 } });
+    match () {
+        _ if h.is_empty() => 0,
+        _ if h == "localhost" || h.ends_with(".localhost") || h == "::1" => 2,
+        _ if h.ends_with(".local") => 1,
+        _ => v4(&h).or_else(|| h.strip_prefix("::ffff:").and_then(v4)).unwrap_or_else(|| h.parse::<std::net::Ipv6Addr>().map(|ip| { let s = ip.segments()[0]; ((s & 0xffc0) == 0xfe80 || (s & 0xfe00) == 0xfc00) as u8 }).unwrap_or(0)),
+    }
 }
 pub fn public_name(raw: &str) -> bool {
     let h = normalize_host(raw);
@@ -33,9 +39,10 @@ pub fn decision(host: &str, presented: &[&str], pins: &Value, grandfathered: &Va
     let host = normalize_host(host);
     let have = pins_of(pins.get(&host));
     match () {
-        _ if is_local_host(&host) => Verdict::Local,
+        _ if host_scope(&host) == 2 => Verdict::Local,
         _ if have.iter().any(|p| !p.is_empty() && presented.contains(&p.as_str())) => Verdict::Pinned,
         _ if !have.is_empty() => Verdict::Changed,
+        _ if host_scope(&host) == 1 => Verdict::LocalFirst,
         _ if grandfathered.as_array().map(|g| g.iter().any(|x| x.as_str() == Some(host.as_str()))).unwrap_or(false) => Verdict::Grandfathered,
         _ => Verdict::Unknown,
     }
@@ -186,8 +193,8 @@ fn verdict_for(app: &AppHandle, host: &str, presented: &[&str]) -> Verdict {
 fn auto_trusted(app: &AppHandle, host: &str, leaf: &[u8]) -> bool {
     let (fp, pin) = (fingerprint(leaf), spki_pin(leaf).unwrap_or_default());
     let v = verdict_for(app, host, &[&fp, &pin]);
-    let _ = (v == Verdict::Grandfathered).then(|| remember(app, host, &pin));
-    matches!(v, Verdict::Local | Verdict::Pinned | Verdict::Grandfathered)
+    let _ = matches!(v, Verdict::Grandfathered | Verdict::LocalFirst).then(|| remember(app, host, &pin));
+    matches!(v, Verdict::Local | Verdict::LocalFirst | Verdict::Pinned | Verdict::Grandfathered)
 }
 pub fn question_pending(app: &AppHandle) -> bool { !app.state::<AppState>().cert_questions.lock().is_empty() }
 pub struct Question { pub title: String, pub heading: String, pub body: String, pub details: String, pub more: String, pub trust: String, pub cancel: String }
@@ -479,12 +486,16 @@ mod tests {
     fn local_hosts() {
         for h in ["localhost", "a.localhost", "nas.local", "127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.9.9", "192.168.1.5", "169.254.1.1", "[::1]", "::ffff:192.168.0.2", "fe80::1", "fd12::1"] { assert!(is_local_host(h), "{h}") }
         for h in ["example.com", "8.8.8.8", "172.32.0.1", "2001:db8::1", ""] { assert!(!is_local_host(h), "{h}") }
+        assert_eq!(["localhost", "a.localhost", "127.0.0.1", "[::1]", "::ffff:127.0.0.1", "nas.local", "10.1.2.3", "fe80::1", "example.com"].map(host_scope), [2, 2, 2, 2, 2, 1, 1, 1, 0]);
     }
     #[test]
     fn verdicts() {
         let pins = json!({ "a.example.com": "AA", "m.example.com": ["sha256/old", "sha256/vpn"] });
         let old = json!(["b.example.com"]);
-        assert_eq!(decision("192.168.1.2", &["x"], &pins, &old), Verdict::Local);
+        assert_eq!(decision("192.168.1.2", &["x"], &pins, &old), Verdict::LocalFirst);
+        assert_eq!(decision("127.0.0.1", &["x"], &json!({ "127.0.0.1": ["y"] }), &old), Verdict::Local);
+        assert_eq!(decision("nas.local", &["FP", "sha256/lan"], &json!({ "nas.local": ["sha256/lan"] }), &old), Verdict::Pinned);
+        assert_eq!(decision("192.168.1.2", &["FP", "sha256/other"], &json!({ "192.168.1.2": ["sha256/lan"] }), &old), Verdict::Changed);
         assert_eq!(decision("A.example.com.", &["AA"], &pins, &old), Verdict::Pinned);
         assert_eq!(decision("a.example.com", &["BB", "sha256/x"], &pins, &old), Verdict::Changed);
         assert_eq!(decision("m.example.com", &["FP", "sha256/vpn"], &pins, &old), Verdict::Pinned);
