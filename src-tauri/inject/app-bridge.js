@@ -1270,6 +1270,7 @@
           z-index: 2147483647 !important; background: #000 !important;
           object-fit: contain !important; margin: 0 !important; padding: 0 !important;
           border: none !important; border-radius: 0 !important;
+          inset: 0 !important; overflow: hidden !important;
         }
       `;
       document.head.appendChild(style);
@@ -1277,16 +1278,26 @@
     if (document.head) injectStyle();
     else window.addEventListener('DOMContentLoaded', injectStyle, { once: true });
 
+    let ownPopover = false;
+    const topLayer = (el, raise) => {
+      if (!raise) return ownPopover && (ownPopover = false, el.matches(':popover-open') && el.hidePopover(), el.removeAttribute('popover'));
+      ownPopover = typeof el.showPopover === 'function' && el.isConnected && !el.hasAttribute('popover');
+      if (!ownPopover) return;
+      el.setAttribute('popover', 'manual');
+      try { el.showPopover(); } catch (err) { ownPopover = false; el.removeAttribute('popover'); console.warn('[Haven Desktop] Full screen could not use the top layer:', err); }
+    };
     function enterFullscreen(el) {
       if (_fullscreenEl) exitFullscreen();
       _fullscreenEl = el;
       el.classList.add('haven-manual-fullscreen');
+      topLayer(el, true);
       invoke('window_enter_fullscreen').catch(() => {});
       document.dispatchEvent(new Event('fullscreenchange'));
     }
 
     function exitFullscreen() {
       if (_fullscreenEl) {
+        topLayer(_fullscreenEl, false);
         _fullscreenEl.classList.remove('haven-manual-fullscreen');
         _fullscreenEl = null;
       }
