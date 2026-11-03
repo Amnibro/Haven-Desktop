@@ -139,6 +139,7 @@ Haven Desktop uses native OS-level notifications instead of browser notification
 Closing Haven doesn't quit it — the app minimizes to your system tray. Click the tray icon to bring it back, or right-click for options:
 
 - **Show Haven** — bring the window back
+- **Move window to main screen** — bring the window back and center it on your main monitor, for when it sits on a monitor you can't see
 - **Server Running / Stopped** — current server status
 - **Quit Haven** — fully exit the app and stop any running server
 

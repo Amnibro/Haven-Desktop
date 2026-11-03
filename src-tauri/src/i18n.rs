@@ -66,6 +66,7 @@ const EN: &[(&str, &str)] = &[
     ("dialog.cancel", "Cancel"),
     ("dialog.defaultValue", "Default: {value}"),
     ("tray.show", "Show Haven"),
+    ("tray.moveToMainScreen", "Move window to main screen"),
     ("tray.quit", "Quit"),
     ("tray.tooltip", "Haven Desktop"),
     ("splash.windowTitle", "Loading Haven…"),
@@ -157,6 +158,7 @@ const PT_BR: &[(&str, &str)] = &[
     ("welcome.connect", "Conectar"),
     ("welcome.connecting", "Conectando..."),
     ("tray.show", "Mostrar Haven"),
+    ("tray.moveToMainScreen", "Mover a janela para a tela principal"),
     ("tray.quit", "Sair"),
     ("tray.tooltip", "Haven Desktop"),
     ("dialog.cancel", "Cancelar"),
@@ -294,7 +296,7 @@ mod tests {
     use super::*;
     #[test]
     fn network_and_certificate_strings_are_translated() {
-        for (k, _) in EN.iter().filter(|(k, _)| k.starts_with("cert.") || k.starts_with("net.")) { assert!(PT_BR.iter().any(|(p, _)| p == k), "{k}") }
+        for (k, _) in EN.iter().filter(|(k, _)| k.starts_with("cert.") || k.starts_with("net.") || k.starts_with("tray.")) { assert!(PT_BR.iter().any(|(p, _)| p == k), "{k}") }
         let v: HashMap<String, String> = [("host".to_string(), "h.example".to_string()), ("issuer".to_string(), "Acme".to_string())].into();
         assert_eq!(translate("pt-BR", "net.redirectBody", &v), "Sua rede ou VPN redirecionou o Haven para h.example. Talvez você precise fazer login ou permitir este site.");
         assert!(translate("en", "cert.certFor", &v).contains("h.example issued by Acme"));

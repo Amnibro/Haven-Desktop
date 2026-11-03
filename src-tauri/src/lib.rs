@@ -21,14 +21,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // A second launch (taskbar pin, Start menu) focuses the running app
             // instead of booting a second copy, like Electron's requestSingleInstanceLock.
-            for label in ["main", "welcome"] {
-                if let Some(win) = app.get_webview_window(label) {
-                    let _ = win.show();
-                    let _ = win.unminimize();
-                    let _ = win.set_focus();
-                    break;
-                }
-            }
+            tray::show_window(app, false);
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
