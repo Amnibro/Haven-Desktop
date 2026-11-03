@@ -69,7 +69,6 @@ pub fn show_window(app: &AppHandle, to_main_screen: bool) {
     }
     let _ = win.set_focus();
 }
-
 pub fn quit_app(app: &AppHandle) {
     let state = app.state::<AppState>();
     *state.quitting.lock() = true;

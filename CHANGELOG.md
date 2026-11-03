@@ -2,10 +2,21 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
-## Unreleased
+## v2.7.0-tauri (2026-11-03)
 
+Push to mute, media keys for Listen Together, muting any server from the server bar, and a way back for a window you can't reach. Level with Electron 1.8.2, plus the tray's Move window to main screen from the next Electron release.
+
+- **Push to mute.** A new hold shortcut under Desktop shortcuts mutes your mic while it is held and puts it back as it was when you let go, and push to talk can't open the mic while it is held. It also follows its key inside the Haven window, which Wayland needs. Needs Haven server 4.25.0 or newer. Unlike the Electron app, which only listens to the key, Haven Desktop takes the key from other apps while it runs, so a game won't see it: pick a key or combination your game doesn't use.
+- **Media keys control Listen Together.** Play/Pause, Next and Previous on the keyboard run the shared player while it plays (and for a few minutes after you pause it), if you are allowed to control it. Haven only holds the keys while that is true, so they go back to other apps when the music stops.
+- **Mute any server from the server bar.** Right-click a server's icon to mute it, or mute it except for @mentions, and muted servers show a 🔕 mark. A server muted from another server's bar saves the mute to your account there the next time you open it. Needs Haven server 4.23.0 or newer.
+- **A window you can't reach can come back (Haven #5847).** The tray menu has **Move window to main screen**, which takes the window out of full screen or maximized and centers it on your main monitor, for when Haven sits on a monitor you can't see, such as a VR headset that's off. **Show Haven**, clicking the tray icon and launching Haven again do the same when the window is on no connected monitor. The window always opens centered on the main monitor, so it can't start on a monitor that's gone. On Wayland the system places windows, so there these only show and focus Haven.
+- **A full screen stream covers the whole window (Haven #5755).** The members list, the sidebar and other parts of the page stayed on top of it and could still be clicked or dragged through it.
+- **Mute, deafen and toggle push to talk can no longer be a single letter key,** since a desktop shortcut takes its key from every app on your computer and typing that letter anywhere would flip it. Hold push to talk and push to mute can still use one.
+- **A new push to talk key works inside the Haven window right away,** instead of after a reload.
+- **Servers on your local network keep their certificate.** A server at a local address (192.168.x.x, 10.x.x.x or a .local name) still connects without a question the first time, and its certificate is now remembered, so a different certificate answering for it later asks first, as it does for other servers. This computer (localhost) stays automatic.
 - **Pasted and dropped files attach once.** Pasting files or a screenshot into a message box on Linux queued every file twice, and dropping files on the chat did the same on Windows, macOS and Linux. Each file now attaches once, and pasting into a thread, DM pop-out or forum post goes to that box.
 - **Certificates from the distrusted eMudhra (emSign) CA keys are refused** (rustls-webpki 0.103.16, webpki-root-certs 1.0.10).
+- Not ported: the **voice overlay for games** (Electron #70). It needs a see-through window that stays above games, and in this app that would mean turning on macOS private APIs for see-through windows, and on Linux, where Haven Desktop runs as a native Wayland app with no X11 mode, the system can't keep a window on top. Videos and sounds already get the webview's own right-click menu (Haven #5825) with play, mute, loop, controls, save and copy address. Electron-only and not needed here: the 1 pixel window edge on Windows, the share picker's window audio and game list, the PipeWire app list fixes, Electron 42.11.17, the electron.exe icon and source-run shortcuts, and the rules that stop a background server page from using the mic, opening the browser (#71) or reading settings, since Haven Desktop shows one server page at a time and has no background server pages.
 
 ## v2.6.1-tauri (2026-10-12)
 

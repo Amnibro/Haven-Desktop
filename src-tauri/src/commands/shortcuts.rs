@@ -8,7 +8,6 @@ static PTT_DOWN: AtomicBool = AtomicBool::new(false);
 static PTM_DOWN: AtomicBool = AtomicBool::new(false);
 static MEDIA_WANTED: AtomicBool = AtomicBool::new(false);
 const MEDIA_KEYS: [(&str, &str); 3] = [(if cfg!(target_os = "linux") { "MediaPlay" } else { "MediaPlayPause" }, "playpause"), ("MediaTrackNext", "nexttrack"), ("MediaTrackPrevious", "previoustrack")];
-
 pub fn types_text(accel: &str) -> bool {
     const MODS: [&str; 12] = ["commandorcontrol", "cmdorctrl", "control", "ctrl", "alt", "option", "altgr", "shift", "meta", "cmd", "command", "super"];
     const KEYS: [&str; 21] = ["space", "tab", "enter", "return", "backspace", "plus", "num0", "num1", "num2", "num3", "num4", "num5", "num6", "num7", "num8", "num9", "numdec", "numadd", "numsub", "nummult", "numdiv"];
