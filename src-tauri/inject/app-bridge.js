@@ -1129,7 +1129,7 @@
 
     shortcuts: {
       getConfig: () => invoke('shortcuts_get'),
-      setConfig: (updates) => invoke('shortcuts_register', { updates }),
+      setConfig: (updates) => invoke('shortcuts_register', { updates }).then((res) => { refreshPttBinding(); return res; }),
     },
 
     setUnreadBadge: (hasUnread) =>
@@ -1737,7 +1737,7 @@
 
   const pttState = () => {
     const app = window.app || null, voice = app && app.voice;
-    if (voice && typeof voice.isMuted === 'boolean') return { app, isMuted: voice.isMuted, inVoice: !!voice.inVoice };
+    if (voice && typeof voice.isMuted === 'boolean') return { app, isMuted: typeof app._micUserMuted === 'function' ? !!app._micUserMuted() : voice.isMuted, inVoice: !!voice.inVoice };
     const buttons = [document.getElementById('voice-mute-btn'), document.getElementById('voice-mute-btn-header')].filter(Boolean);
     if (!buttons.length) return null;
     const shown = buttons.find((b) => b.style?.display !== 'none'), btn = shown || buttons[0], pressed = btn.getAttribute('aria-pressed');
@@ -1748,6 +1748,7 @@
   function pttSetTalking(shouldTalk, via = 'key') {
     const s = pttState(), what = `${via} ${shouldTalk ? 'down' : 'up'}`;
     if (!pttUsable(s, what)) return;
+    if (ptmHeld) return (ptmLive = shouldTalk, console.log(`[PTT] ${what}: push to mute is held, the mic stays muted`));
     const flip = shouldTalk ? s.isMuted : !s.isMuted;
     console.log(`[PTT] ${what}: muted=${s.isMuted}, ${flip ? 'toggling' : 'no change'}`);
     if (flip) pttFlip(s);
@@ -1758,11 +1759,29 @@
     if (now - pttLastToggle < 250) return;
     pttLastToggle = now;
     const s = pttState();
-    if (pttUsable(s, `${via} toggle`)) pttFlip(s);
+    if (!pttUsable(s, `${via} toggle`)) return;
+    if (ptmHeld) return (ptmLive = !ptmLive, console.log(`[PTT] ${via} toggle: push to mute is held, the mic stays muted`));
+    pttFlip(s);
+  }
+  let ptmHeld = false, ptmLive = false;
+  function ptmSetHeld(held, via = 'key') {
+    const s = pttState(), what = `${via} ${held ? 'down' : 'up'}`;
+    if (!s) return console.log(`[PTM] ${what}: no voice state on the page yet, ignored`);
+    if (typeof s.app?._pushToMute === 'function') {
+      console.log(`[PTM] ${what}: inVoice=${s.inVoice}`);
+      try { s.app._pushToMute(held); } catch (err) { console.warn('[PTM] _pushToMute threw:', err); }
+      return;
+    }
+    if (held && (ptmHeld || s.inVoice === false)) return ptmHeld || console.log(`[PTM] ${what}: not in voice, ignored`);
+    if (!held && !ptmHeld) return;
+    const flip = held ? !s.isMuted : ptmLive && s.isMuted && s.inVoice !== false;
+    [ptmHeld, ptmLive] = held ? [true, !s.isMuted] : [false, false];
+    console.log(`[PTM] ${what}: muted=${s.isMuted}, ${flip ? (held ? 'muting' : 'unmuting') : 'no change'}`);
+    if (flip) pttFlip(s);
   }
   const PTT_DOM_KEYS = { Space: ' ', Up: 'ArrowUp', Down: 'ArrowDown', Left: 'ArrowLeft', Right: 'ArrowRight', Return: 'Enter', Escape: 'Escape', Tab: 'Tab', Backspace: 'Backspace', Delete: 'Delete', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown' };
   const PTT_LONE_MODS = { CommandOrControl: ['control', 'meta'], CmdOrCtrl: ['control', 'meta'], Control: ['control'], Ctrl: ['control'], Meta: ['meta'], Cmd: ['meta'], Super: ['meta'], Alt: ['alt'], Shift: ['shift'] };
-  let pttBinding = null, pttToggleMode = false, pttDown = false;
+  let pttBinding = null, pttToggleMode = false, pttDown = false, ptmBinding = null, ptmDown = false;
   const parsePtt = (accel) => {
     const mouse = /^Mouse(\d+)$/i.exec(accel || '');
     if (mouse) return { mouseButton: parseInt(mouse[1], 10) - 1 };
@@ -1782,19 +1801,32 @@
     pttToggleMode = !!cfg && cfg.pttMode === 'toggle';
     pttBinding = cfg && cfg.ptt ? parsePtt(cfg.ptt) : null;
     if (!pttBinding && pttDown) { pttDown = false; pttSetTalking(false); }
-  }).catch(() => { pttBinding = null; });
+    ptmBinding = cfg && cfg.ptm ? parsePtt(cfg.ptm) : null;
+    if (!ptmBinding && ptmDown) { ptmDown = false; ptmSetHeld(false); }
+  }).catch((err) => { console.warn('[PTT] could not read the shortcut bindings:', err); pttBinding = ptmBinding = null; });
   const pttPress = (match) => { if (!match) return; if (pttToggleMode) return pttToggleOnce('page'); if (pttDown) return; pttDown = true; pttSetTalking(true); };
   const pttRelease = (match) => { if (!match || !pttDown || pttToggleMode) return; pttDown = false; pttSetTalking(false); };
-  window.addEventListener('keydown', (e) => pttPress(!e.repeat && pttKeyMatches(e, pttBinding, true)), true);
-  window.addEventListener('keyup', (e) => pttRelease(pttKeyMatches(e, pttBinding, false)), true);
-  window.addEventListener('mousedown', (e) => pttPress(pttBinding?.mouseButton != null && e.button === pttBinding.mouseButton), true);
-  window.addEventListener('mouseup', (e) => pttRelease(pttBinding?.mouseButton != null && e.button === pttBinding.mouseButton), true);
+  const ptmEdge = (match, held) => { if (match && ptmDown !== held) { ptmDown = held; ptmSetHeld(held); } };
+  const onButton = (b, e) => b?.mouseButton != null && e.button === b.mouseButton;
+  window.addEventListener('keydown', (e) => { ptmEdge(!e.repeat && pttKeyMatches(e, ptmBinding, true), true); pttPress(!e.repeat && pttKeyMatches(e, pttBinding, true)); }, true);
+  window.addEventListener('keyup', (e) => { ptmEdge(pttKeyMatches(e, ptmBinding, false), false); pttRelease(pttKeyMatches(e, pttBinding, false)); }, true);
+  window.addEventListener('mousedown', (e) => { ptmEdge(onButton(ptmBinding, e), true); pttPress(onButton(pttBinding, e)); }, true);
+  window.addEventListener('mouseup', (e) => { ptmEdge(onButton(ptmBinding, e), false); pttRelease(onButton(pttBinding, e)); }, true);
   window.addEventListener('DOMContentLoaded', refreshPttBinding);
   listen('voice:mute-toggle', () => document.getElementById('voice-mute-btn')?.click());
   listen('voice:deafen-toggle', () => document.getElementById('voice-deafen-btn')?.click());
   listen('voice:ptt-toggle', () => pttToggleOnce('shortcut'));
   listen('voice:ptt-down', () => pttSetTalking(true, 'shortcut'));
   listen('voice:ptt-up', () => pttSetTalking(false, 'shortcut'));
+  listen('voice:ptm-down', () => ptmSetHeld(true, 'shortcut'));
+  listen('voice:ptm-up', () => ptmSetHeld(false, 'shortcut'));
+  document.addEventListener('haven:music-media-keys', (e) => invoke('music_media_keys', { wanted: e?.detail?.wanted === true }).catch((err) => console.warn('[MediaKeys] could not ask for the media keys:', err)));
+  listen('music:media-key', (action) => {
+    const app = window.app;
+    if (!['playpause', 'nexttrack', 'previoustrack'].includes(action)) return;
+    if (typeof app?._musicMediaKey !== 'function') return console.log(`[MediaKeys] ${action}: the page has no shared player controls, ignored`);
+    if (!app._musicMediaKey(action)) console.log(`[MediaKeys] ${action}: nothing to do (no track, or not allowed)`);
+  });
   (function updateBanner() {
     if (window.opener) return;
     let bar = null, labels = {};

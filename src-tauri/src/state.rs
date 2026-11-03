@@ -79,7 +79,8 @@ pub fn ensure_defaults(app: &AppHandle) -> Result<(), String> {
         "desktopShortcuts": {
             "mute": "CommandOrControl+Shift+M",
             "deafen": "CommandOrControl+Shift+D",
-            "ptt": ""
+            "ptt": "",
+            "ptm": ""
         },
         "startOnLogin": false,
         "startHidden": false,

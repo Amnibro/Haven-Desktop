@@ -288,6 +288,7 @@ fn create_main_window(app: &AppHandle, initial: WebviewUrl) -> Result<(), String
         })
         .on_page_load(move |_window, payload| {
             crate::nav_fail::on_page_load(&load_guard, &payload);
+            let _ = (payload.event() == tauri::webview::PageLoadEvent::Started).then(|| super::set_media_keys(&load_guard, Some(false)));
         })
         .on_new_window(move |url, _| open_popup(&popup_app, url))
         .theme(Some(tauri::Theme::Dark))

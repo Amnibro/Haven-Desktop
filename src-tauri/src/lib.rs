@@ -84,6 +84,7 @@ pub fn run() {
             commands::desktop_set_unlimit_frame_rate,
             commands::shortcuts_get,
             commands::shortcuts_register,
+            commands::music_media_keys,
             commands::clipboard_write_text,
             commands::clipboard_write_image,
             commands::clipboard_read_image,
