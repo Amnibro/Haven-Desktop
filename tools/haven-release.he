@@ -110,52 +110,58 @@ feed(dir const byte[:], version const byte[:], notes_path const byte[:]) int:
 	write_file_atomic(target, out)
 	say(str("wrote ", target))
 	return 0
-sh(cmd const byte[:]) bool:
+run_step(cmd const byte[:]) bool:
 	if run_command(cmd) != 0:
 		say(str("failed: ", cmd))
 		return false
-	return true
+	true
 amnios(checkout const byte[:], deb const byte[:], version const byte[:]) int:
-	p := str(checkout, "/packaging/haven-desktop")
-	f := str(p, "/PKGBUILD")
-	shafile := str(p, "/.deb.sha256")
-	if !sh(str("sha256sum '", deb, "' > '", shafile, "'")): return 1
-	shatext byte[>..] ~= []
-	read_file(shafile, shatext)
-	delete_file(shafile)
-	parts := words(shatext)
+	pdir := str(checkout, "/packaging/haven-desktop")
+	pkg := str(pdir, "/PKGBUILD")
+	shaf := str(pdir, "/.deb.sha256")
+	if !run_step(str("sha256sum '", deb, "' > '", shaf, "'")): return 1
+	sb byte[>..] ~= []
+	read_file(shaf, sb)
+	delete_file(shaf)
+	ws := words(sb)
 	sha byte[>..] ~= []
-	if parts.len > 0: sha.append(parts[0])
-	text byte[>..] ~= []
-	read_file(f, text)
-	lines := split(text, '\n')
-	out byte[>..] ~= []
-	got_ver ~= false
-	got_rel ~= false
-	got_sha ~= false
-	for line, i lines:
-		if i > 0: out.push('\n')
-		if starts_with(line, "pkgver="):
-			got_ver = true
-			format(out, "pkgver=", version)
-		else if starts_with(line, "pkgrel="):
-			got_rel = true
-			out.append("pkgrel=1")
-		else if starts_with(line, "sha256sums="):
-			got_sha = true
-			format(out, "sha256sums=('", sha, "')")
-		else:
-			out.append(line)
-	if !got_ver || !got_rel || !got_sha:
+	if ws.len > 0: sha.append(ws[0])
+	fb byte[>..] ~= []
+	if !read_file(pkg, fb):
 		say("PKGBUILD is missing a field")
 		return 1
-	write_file_atomic(f, out)
+	parts := split(fb, '\n')
+	out byte[>..] ~= []
+	has_ver ~= false
+	has_rel ~= false
+	has_sum ~= false
+	for line, i parts:
+		if starts_with(line, "pkgver="):
+			has_ver = true
+			out.append("pkgver=")
+			out.append(version)
+		else if starts_with(line, "pkgrel="):
+			has_rel = true
+			out.append("pkgrel=1")
+		else if starts_with(line, "sha256sums="):
+			has_sum = true
+			out.append("sha256sums=('")
+			out.append(sha)
+			out.append("')")
+		else:
+			out.append(line)
+		if i < parts.len - 1: out.push('\n')
+	if !has_ver || !has_rel || !has_sum:
+		say("PKGBUILD is missing a field")
+		return 1
+	write_file_atomic(pkg, out)
 	repo := str(checkout, "/out/haven-desktop-repo")
-	if !sh(str("cp '", deb, "' '", p, "/Haven_", version, "_amd64.deb'")): return 1
-	if !sh(str("rm -rf '", repo, "' && mkdir -p '", repo, "'")): return 1
-	if !sh(str("cd '", p, "' && PKGEXT=.pkg.tar PKGDEST='", repo, "' makepkg -f --nodeps --noconfirm")): return 1
-	if !sh(str("AMNI_LOCAL_REPO='", repo, "' '", checkout, "/tools/publish-repo.sh'")): return 1
-	if !sh(str("rm -rf '", p, "/src' '", p, "/pkg' '", p, "/Haven_", version, "_amd64.deb' '", repo, "'")): return 1
+	debcopy := str(pdir, "/Haven_", version, "_amd64.deb")
+	if !run_step(str("cp '", deb, "' '", debcopy, "'")): return 1
+	if !run_step(str("rm -rf '", repo, "' && mkdir -p '", repo, "'")): return 1
+	if !run_step(str("cd '", pdir, "' && PKGEXT=.pkg.tar PKGDEST='", repo, "' makepkg -f --nodeps --noconfirm")): return 1
+	if !run_step(str("AMNI_LOCAL_REPO='", repo, "' bash '", checkout, "/tools/publish-repo.sh'")): return 1
+	if !run_step(str("rm -rf '", pdir, "/src' '", pdir, "/pkg' '", debcopy, "' '", repo, "'")): return 1
 	say(str("published haven-desktop ", version, "-1 to the Amni OS repo"))
 	return 0
 main():
