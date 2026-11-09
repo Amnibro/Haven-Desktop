@@ -1,0 +1,17 @@
+pkgname=haven-chat-bin
+pkgver=2.7.1
+pkgrel=1
+pkgdesc="Haven Desktop: native client for Haven, the private self-hosted chat"
+arch=('x86_64')
+url="https://github.com/Amnibro/Haven-Desktop"
+license=('AGPL-3.0-only')
+depends=('cairo' 'dbus' 'gdk-pixbuf2' 'glib2' 'glibc' 'gtk3' 'hicolor-icon-theme' 'libayatana-appindicator' 'libgcc' 'libpulse' 'libsoup3' 'libstdc++' 'webkit2gtk-4.1')
+optdepends=('wl-clipboard: paste images and files on Wayland' 'xclip: paste images and files on X11')
+provides=('haven-chat')
+conflicts=('haven-chat' 'haven-desktop')
+options=('!strip' '!debug')
+source=("${url}/releases/download/v${pkgver}-tauri/Haven_${pkgver}_amd64.deb")
+sha256sums=('78072221f66897d7b09a8ab9ecfea3760811ec058458bdb6447e51c0ae119c01')
+package() {
+  bsdtar -xf data.tar.* -C "$pkgdir" -s '#256x256@2#256x256#'
+}

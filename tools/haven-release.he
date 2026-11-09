@@ -115,58 +115,89 @@ run_step(cmd const byte[:]) bool:
 		say(str("failed: ", cmd))
 		return false
 	true
-amnios(checkout const byte[:], deb const byte[:], version const byte[:]) int:
-	pdir := str(checkout, "/packaging/haven-desktop")
-	pkg := str(pdir, "/PKGBUILD")
-	shaf := str(pdir, "/.deb.sha256")
-	if !run_step(str("sha256sum '", deb, "' > '", shaf, "'")): return 1
+bump(dir const byte[:], deb const byte[:], version const byte[:]) bool:
+	sumfile := str(dir, "/.deb.sha256")
+	if !run_step(str("sha256sum '", deb, "' > '", sumfile, "'")):
+		return false
 	sb byte[>..] ~= []
-	read_file(shaf, sb)
-	delete_file(shaf)
+	sok := read_file(sumfile, sb)
+	delete_file(sumfile)
 	ws := words(sb)
-	sha byte[>..] ~= []
-	if ws.len > 0: sha.append(ws[0])
-	fb byte[>..] ~= []
-	if !read_file(pkg, fb):
+	if !sok || ws.len == 0:
+		return false
+	sha := ws[0]
+	pb byte[>..] ~= []
+	ppath := str(dir, "/PKGBUILD")
+	if !read_file(ppath, pb):
 		say("PKGBUILD is missing a field")
-		return 1
-	parts := split(fb, '\n')
+		return false
 	out byte[>..] ~= []
 	has_ver ~= false
 	has_rel ~= false
 	has_sum ~= false
-	for line, i parts:
+	lines := split(pb, '\n')
+	for line, i lines:
+		if i > 0:
+			out.push('\n')
 		if starts_with(line, "pkgver="):
-			has_ver = true
 			out.append("pkgver=")
 			out.append(version)
+			has_ver = true
 		else if starts_with(line, "pkgrel="):
-			has_rel = true
 			out.append("pkgrel=1")
+			has_rel = true
 		else if starts_with(line, "sha256sums="):
-			has_sum = true
 			out.append("sha256sums=('")
 			out.append(sha)
 			out.append("')")
+			has_sum = true
 		else:
 			out.append(line)
-		if i < parts.len - 1: out.push('\n')
 	if !has_ver || !has_rel || !has_sum:
 		say("PKGBUILD is missing a field")
+		return false
+	write_file_atomic(ppath, out)
+	true
+amnios(checkout const byte[:], deb const byte[:], version const byte[:]) int:
+	p := str(checkout, "/packaging/haven-desktop")
+	if !bump(p, deb, version):
 		return 1
-	write_file_atomic(pkg, out)
 	repo := str(checkout, "/out/haven-desktop-repo")
-	debcopy := str(pdir, "/Haven_", version, "_amd64.deb")
-	if !run_step(str("cp '", deb, "' '", debcopy, "'")): return 1
-	if !run_step(str("rm -rf '", repo, "' && mkdir -p '", repo, "'")): return 1
-	if !run_step(str("cd '", pdir, "' && PKGEXT=.pkg.tar PKGDEST='", repo, "' makepkg -f --nodeps --noconfirm")): return 1
-	if !run_step(str("AMNI_LOCAL_REPO='", repo, "' bash '", checkout, "/tools/publish-repo.sh'")): return 1
-	if !run_step(str("rm -rf '", pdir, "/src' '", pdir, "/pkg' '", debcopy, "' '", repo, "'")): return 1
+	if !run_step(str("cp '", deb, "' '", p, "/Haven_", version, "_amd64.deb'")):
+		return 1
+	if !run_step(str("rm -rf '", repo, "' && mkdir -p '", repo, "'")):
+		return 1
+	if !run_step(str("cd '", p, "' && PKGEXT=.pkg.tar PKGDEST='", repo, "' makepkg -f --nodeps --noconfirm")):
+		return 1
+	if !run_step(str("AMNI_LOCAL_REPO='", repo, "' bash '", checkout, "/tools/publish-repo.sh'")):
+		return 1
+	if !run_step(str("rm -rf '", p, "/src' '", p, "/pkg' '", p, "/Haven_", version, "_amd64.deb' '", repo, "'")):
+		return 1
 	say(str("published haven-desktop ", version, "-1 to the Amni OS repo"))
 	return 0
+aur(checkout const byte[:], deb const byte[:], version const byte[:]) int:
+	p := str(checkout, "/packaging/aur")
+	a := str(p, "/aur")
+	if !bump(p, deb, version):
+		return 1
+	if !run_step(str("cp '", deb, "' '", p, "/Haven_", version, "_amd64.deb'")):
+		return 1
+	if !run_step(str("cd '", p, "' && PKGDEST='", p, "/out' makepkg -f --nodeps --noconfirm && makepkg --printsrcinfo > .SRCINFO")):
+		return 1
+	push_cmd := str("rm -rf '", a, "' && git clone -q ssh://aur@aur.archlinux.org/haven-chat-bin.git '", a, "' && cp '", p, "/PKGBUILD' '", p, "/.SRCINFO' '", a, "/' && cd '", a, "' && git add PKGBUILD .SRCINFO && git -c user.name=\"$(git -C '", checkout, "' config user.name)\" -c user.email=\"$(git -C '", checkout, "' config user.email)\" commit -q -m 'Update to ", version, "-1' && if [ \"$AMNI_DRY_RUN\" = 1 ]; then git show --stat --format='haven-release: dry run, not pushed: %s' HEAD; else git push -q origin HEAD:master && echo 'haven-release: published haven-chat-bin ", version, "-1 to the AUR'; fi")
+	if !run_step(push_cmd):
+		return 1
+	if !run_step(str("rm -rf '", p, "/src' '", p, "/pkg' '", p, "/out' '", a, "' '", p, "/Haven_", version, "_amd64.deb'")):
+		return 1
+	return 0
 main():
-	a := args()
-	if a.len == 5 && a[1] == "feed": exit(feed(a[2], a[3], a[4]))
-	if a.len == 5 && a[1] == "amnios": exit(amnios(a[2], a[3], a[4]))
-	say("usage: haven-release feed <dir> <version> <notes file> | amnios <amni-os checkout> <deb file> <version>")
-	exit(2);
+	av := args()
+	if av.len == 5:
+		if av[1] == "feed":
+			exit(feed(av[2], av[3], av[4]))
+		if av[1] == "amnios":
+			exit(amnios(av[2], av[3], av[4]))
+		if av[1] == "aur":
+			exit(aur(av[2], av[3], av[4]))
+	say("usage: haven-release feed <dir> <version> <notes file> | amnios <amni-os checkout> <deb file> <version> | aur <haven-desktop checkout> <deb file> <version>")
+	exit(2)
