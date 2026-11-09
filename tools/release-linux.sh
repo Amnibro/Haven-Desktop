@@ -12,14 +12,15 @@ if [[ -z $DEB ]]; then
   [[ -n ${TAURI_SIGNING_PRIVATE_KEY:-} ]] || { echo "TAURI_SIGNING_PRIVATE_KEY is not set; the updater needs signed AppImages"; exit 1; }
   podman build -q -t haven-linux-builder -f tools/linux-builder.Containerfile tools >/dev/null
   CACHE=${HAVEN_LINUX_CACHE:-$HOME/.cache/amni-build/haven-linux}
-  mkdir -p "$CACHE/target" "$CACHE/cargo" "$CACHE/npm"
-  podman run --rm -v "$ROOT:/src" -v "$CACHE/target:/target" -v "$CACHE/cargo:/root/.cargo/registry" -v "$CACHE/npm:/root/.npm" -e CARGO_TARGET_DIR=/target -e TAURI_SIGNING_PRIVATE_KEY -e TAURI_SIGNING_PRIVATE_KEY_PASSWORD haven-linux-builder sh -c "npm ci && npx tauri build --bundles appimage,deb"
+  mkdir -p "$CACHE/target" "$CACHE/cargo" "$CACHE/npm" "$CACHE/tauri"
+  podman run --rm -v "$ROOT:/src" -v "$CACHE/target:/target" -v "$CACHE/cargo:/root/.cargo/registry" -v "$CACHE/npm:/root/.npm" -v "$CACHE/tauri:/root/.cache/tauri" -e CARGO_TARGET_DIR=/target -e TAURI_SIGNING_PRIVATE_KEY -e TAURI_SIGNING_PRIVATE_KEY_PASSWORD haven-linux-builder sh -c "npm ci && npx tauri build --bundles appimage,deb"
   B=$CACHE/target/release/bundle
   cp "$B"/appimage/*.AppImage "$OUT/Haven_${V}_amd64.AppImage"
   cp "$B"/appimage/*.AppImage.sig "$OUT/Haven_${V}_amd64.AppImage.sig"
   DEB=$(ls -t "$B"/deb/*.deb | head -1)
 fi
 cp "$DEB" "$OUT/Haven_${V}_amd64.deb"
+[[ -n ${TAURI_SIGNING_PRIVATE_KEY:-} ]] && npx tauri signer sign "$OUT/Haven_${V}_amd64.deb"
 cp "$DEB" flatpak/haven.deb
 [[ -d flatpak/shared-modules ]] || git clone --depth 1 https://github.com/flathub/shared-modules flatpak/shared-modules
 META=flatpak/com.haven.desktop.metainfo.xml
@@ -38,7 +39,7 @@ rm -rf "$OUT/flatpak-build" "$OUT/.flatpak-builder" "$OUT/flatpak-build-repo" fl
 if ((UPLOAD)); then
   TAG=v$V-tauri
   gh release view "$TAG" >/dev/null 2>&1 || { echo "release $TAG does not exist yet; create it first (creating a v* tag starts .github/workflows/build-tauri.yml)"; exit 1; }
-  mapfile -t FILES < <(find "$OUT" -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*.deb' -o -name '*.flatpak' -o -name '*.flatpakref' \))
+  mapfile -t FILES < <(find "$OUT" -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*.deb' -o -name '*.deb.sig' -o -name '*.flatpak' -o -name '*.flatpakref' \))
   gh release upload "$TAG" "${FILES[@]}" --clobber
 fi
 echo "Linux release $V in $OUT"

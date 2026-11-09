@@ -1,0 +1,171 @@
+=== -6d8cf8b5a0ead8f5
+use os
+say(msg const byte[:]):
+	print("haven-release: ", msg);
+=== -6f729af24db7d07f
+json_text(s const byte[:]) byte[>..]:
+	out byte[>..] ~= []
+	hex := "0123456789abcdef"
+	out.push('"')
+	for c s:
+		if c == '"':
+			out.append("\\\"")
+		else if c == '\\':
+			out.append("\\\\")
+		else if c == '\n':
+			out.append("\\n")
+		else if c == '\r':
+			out.append("\\r")
+		else if c == '\t':
+			out.append("\\t")
+		else if c < 32:
+			out.append("\\u00")
+			out.push(hex[c >> 4])
+			out.push(hex[c & 15])
+		else:
+			out.push(c)
+	out.push('"')
+	out
+=== -35fc63e7b3fc94b9
+feed_target(i int) const byte[:]:
+	match i:
+		0 => "windows-x86_64"
+		1 => "linux-x86_64"
+		2 => "linux-x86_64-deb"
+		3 => "darwin-aarch64"
+		_ => "darwin-x86_64"
+feed_name(i int, version const byte[:]) byte[>..]:
+	match i:
+		0 => str("Haven_", version, "_x64-setup.exe")
+		1 => str("Haven_", version, "_amd64.AppImage")
+		2 => str("Haven_", version, "_amd64.deb")
+		_ => str("Haven.app.tar.gz")
+two_digits(out byte[>..]&, v int):
+	if v < 10: out.push('0')
+	format(out, v);
+feed_now() byte[>..]:
+	secs := time() as int
+	days := secs / 86400
+	rem := secs % 86400
+	z := days + 719468
+	era := z / 146097
+	doe := z - era * 146097
+	yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+	y ~= yoe + era * 400
+	doy := doe - (365 * yoe + yoe / 4 - yoe / 100)
+	mp := (5 * doy + 2) / 153
+	d := doy - (153 * mp + 2) / 5 + 1
+	m := if mp < 10 { mp + 3 } else { mp - 9 }
+	if m <= 2: y += 1
+	out byte[>..] ~= []
+	format(out, y)
+	out.push('-')
+	two_digits(out, m)
+	out.push('-')
+	two_digits(out, d)
+	out.push('T')
+	two_digits(out, rem / 3600)
+	out.push(':')
+	two_digits(out, rem % 3600 / 60)
+	out.push(':')
+	two_digits(out, rem % 60)
+	out.append(".000Z")
+	out
+feed(dir const byte[:], version const byte[:], notes_path const byte[:]) int:
+	for i 5:
+		name := feed_name(i, version)
+		path := str(dir, "/", name)
+		buf byte[>..] ~= []
+		if !read_file(path, buf):
+			say(str("missing ", name))
+			return 1
+		sbuf byte[>..] ~= []
+		if !read_file(str(path, ".sig"), sbuf) || trim(sbuf).len == 0:
+			say(str("missing signature for ", name))
+			return 1
+	nbuf byte[>..] ~= []
+	if !read_file(notes_path, nbuf) || trim(nbuf).len == 0:
+		say("missing notes")
+		return 1
+	out byte[>..] ~= []
+	out.append("{\n  \"version\": ")
+	out.append(json_text(version))
+	out.append(",\n  \"notes\": ")
+	out.append(json_text(trim(nbuf)))
+	out.append(",\n  \"pub_date\": ")
+	out.append(json_text(feed_now()))
+	out.append(",\n  \"platforms\": {\n")
+	for i 5:
+		name := feed_name(i, version)
+		sg byte[>..] ~= []
+		read_file(str(dir, "/", name, ".sig"), sg)
+		out.append("    ")
+		out.append(json_text(feed_target(i)))
+		out.append(": {\n      \"signature\": ")
+		out.append(json_text(trim(sg)))
+		out.append(",\n      \"url\": ")
+		out.append(json_text(str("https://github.com/Amnibro/Haven-Desktop/releases/download/v", version, "-tauri/", name)))
+		out.append("\n    }")
+		if i < 4: out.push(',')
+		out.push('\n')
+	out.append("  }\n}\n")
+	target := str(dir, "/latest.json")
+	write_file_atomic(target, out)
+	say(str("wrote ", target))
+	return 0
+=== 7cb07c8dbb07a6ed
+sh(cmd const byte[:]) bool:
+	if run_command(cmd) != 0:
+		say(str("failed: ", cmd))
+		return false
+	return true
+amnios(checkout const byte[:], deb const byte[:], version const byte[:]) int:
+	p := str(checkout, "/packaging/haven-desktop")
+	f := str(p, "/PKGBUILD")
+	shafile := str(p, "/.deb.sha256")
+	if !sh(str("sha256sum '", deb, "' > '", shafile, "'")): return 1
+	shatext byte[>..] ~= []
+	read_file(shafile, shatext)
+	delete_file(shafile)
+	parts := words(shatext)
+	sha byte[>..] ~= []
+	if parts.len > 0: sha.append(parts[0])
+	text byte[>..] ~= []
+	read_file(f, text)
+	lines := split(text, '\n')
+	out byte[>..] ~= []
+	got_ver ~= false
+	got_rel ~= false
+	got_sha ~= false
+	for line, i lines:
+		if i > 0: out.push('\n')
+		if starts_with(line, "pkgver="):
+			got_ver = true
+			format(out, "pkgver=", version)
+		else if starts_with(line, "pkgrel="):
+			got_rel = true
+			out.append("pkgrel=1")
+		else if starts_with(line, "sha256sums="):
+			got_sha = true
+			format(out, "sha256sums=('", sha, "')")
+		else:
+			out.append(line)
+	if !got_ver || !got_rel || !got_sha:
+		say("PKGBUILD is missing a field")
+		return 1
+	write_file_atomic(f, out)
+	repo := str(checkout, "/out/haven-desktop-repo")
+	if !sh(str("cp '", deb, "' '", p, "/Haven_", version, "_amd64.deb'")): return 1
+	if !sh(str("rm -rf '", repo, "' && mkdir -p '", repo, "'")): return 1
+	if !sh(str("cd '", p, "' && PKGEXT=.pkg.tar PKGDEST='", repo, "' makepkg -f --nodeps --noconfirm")): return 1
+	if !sh(str("AMNI_LOCAL_REPO='", repo, "' '", checkout, "/tools/publish-repo.sh'")): return 1
+	if !sh(str("rm -rf '", p, "/src' '", p, "/pkg' '", p, "/Haven_", version, "_amd64.deb' '", repo, "'")): return 1
+	say(str("published haven-desktop ", version, "-1 to the Amni OS repo"))
+	return 0
+=== -5ec0170158b37068
+main():
+	a := args()
+	if a.len == 5 && a[1] == "feed": exit(feed(a[2], a[3], a[4]))
+	if a.len == 5 && a[1] == "amnios": exit(amnios(a[2], a[3], a[4]))
+	say("usage: haven-release feed <dir> <version> <notes file> | amnios <amni-os checkout> <deb file> <version>")
+	exit(2);

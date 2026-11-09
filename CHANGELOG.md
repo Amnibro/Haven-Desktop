@@ -2,6 +2,15 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## v2.7.1-tauri (2026-11-09)
+
+In-app updates now install on every Linux setup. Level with Electron 1.8.2.
+
+- **Updates install on .deb installs.** Haven installed from the .deb or the APT repo stopped with "The update could not be installed", because the update feed only offered the AppImage. The feed now carries the .deb too, and Haven asks for your password to install it.
+- **Updates install on systems without dpkg.** Haven running from its own copy, as it does on Amni OS, now replaces that copy with the new version.
+- **No update offers Haven can't carry out.** When your package manager owns the install and Haven can't change it, Haven leaves updates to the package manager and says so under Check for Updates.
+- **A failed update says why,** instead of only saying it could not be installed.
+
 ## v2.7.0-tauri (2026-11-03)
 
 Push to mute, media keys for Listen Together, muting any server from the server bar, and a way back for a window you can't reach. Level with Electron 1.8.2, plus the tray's Move window to main screen from the next Electron release.
