@@ -4,7 +4,7 @@ Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Ha
 
 ## Unreleased
 
-- **Arch Linux package.** `haven-chat-bin` on the AUR repackages the release .deb, and pacman or your AUR helper keeps it up to date.
+- **Arch Linux package.** `packaging/aur` builds `haven-chat-bin` from the release .deb with `makepkg -si`, and it goes on the AUR as `haven-chat-bin`.
 - **Updates leave pacman installs alone.** Haven hands an update to dpkg only when dpkg installed it, so an Arch system that also has dpkg is no longer offered a .deb install over its pacman package.
 
 ## v2.7.1-tauri (2026-11-09)

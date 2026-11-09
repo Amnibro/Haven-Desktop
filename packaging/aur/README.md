@@ -4,11 +4,15 @@
 
 ## Install
 
+Build it from this repo with pacman's own tools:
+
 ```bash
-yay -S haven-chat-bin
+git clone https://github.com/Amnibro/Haven-Desktop.git
+cd Haven-Desktop/packaging/aur
+makepkg -si
 ```
 
-Without an AUR helper: `git clone https://aur.archlinux.org/haven-chat-bin.git && cd haven-chat-bin && makepkg -si`.
+Once the package is on the AUR, `yay -S haven-chat-bin` (or any AUR helper) does the same.
 
 Updates come through pacman or your AUR helper. The in-app updater sees that the package manager owns the install and leaves updates to it.
 
