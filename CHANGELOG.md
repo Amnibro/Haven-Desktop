@@ -2,6 +2,11 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## Unreleased
+
+- **Arch Linux package.** `haven-chat-bin` on the AUR repackages the release .deb, and pacman or your AUR helper keeps it up to date.
+- **Updates leave pacman installs alone.** Haven hands an update to dpkg only when dpkg installed it, so an Arch system that also has dpkg is no longer offered a .deb install over its pacman package.
+
 ## v2.7.1-tauri (2026-11-09)
 
 In-app updates now install on every Linux setup. Level with Electron 1.8.2.

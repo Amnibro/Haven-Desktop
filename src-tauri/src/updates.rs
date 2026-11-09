@@ -16,7 +16,7 @@ fn pick_route(appimage: bool, deb_package: bool, writable: bool) -> Route {
 fn route() -> Route {
     use tauri::utils::{config::BundleType, platform::{bundle_type, current_exe}};
     let exe = current_exe().unwrap_or_default();
-    let dpkg = std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("dpkg").is_file()));
+    let dpkg = std::process::Command::new("dpkg").arg("-S").arg(&exe).output().is_ok_and(|o| o.status.success());
     let probe = exe.with_file_name(".haven-update-probe");
     let writable = std::fs::write(&probe, b"").is_ok();
     let _ = std::fs::remove_file(&probe);
