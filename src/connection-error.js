@@ -29,6 +29,42 @@ function bindAction(el, run) {
   el?.addEventListener("click", (event) => { event.preventDefault(); bindRun(el, run); });
 }
 
+// 5 s, 10 s, 20 s, 40 s, then once a minute. The attempt count survives this
+// page being reloaded by a failed try, so the delay keeps growing.
+function autoRetry(url, t) {
+  const status = document.getElementById("retry-status");
+  const key = "haven_retry_" + url;
+  // A failure more than five minutes after the last try is a new outage.
+  let attempt = 0;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key) || "null");
+    if (saved && Date.now() - saved.at < 5 * 60 * 1000) attempt = Number(saved.attempt) || 0;
+  } catch {}
+  const delay = Math.min(60, 5 * 2 ** Math.min(attempt, 4)) + Math.floor(Math.random() * 3);
+  let left = delay;
+  const show = () => {
+    if (!status) return;
+    status.hidden = false;
+    status.textContent = left > 0
+      ? (t("connection.retryingIn", { seconds: left }) || `Trying again in ${left}s…`)
+      : (t("connection.retryingNow") || "Trying again…");
+  };
+  show();
+  const timer = setInterval(() => {
+    left -= 1;
+    show();
+    if (left > 0) return;
+    clearInterval(timer);
+    try { sessionStorage.setItem(key, JSON.stringify({ attempt: attempt + 1, at: Date.now() })); } catch {}
+    // Opens the app when the server answers; otherwise this page stays (or
+    // is reloaded) and the next, longer wait starts.
+    invoke("nav_open_app", { serverUrl: url })
+      .catch((err) => console.warn("[Haven] retry failed", err))
+      .finally(() => autoRetry(url, t));
+  }, 1000);
+  addEventListener("pagehide", () => clearInterval(timer), { once: true });
+}
+
 async function boot() {
   let locale = "en";
   try {
@@ -63,6 +99,10 @@ async function boot() {
   const retry = document.getElementById("btn-retry");
   retry.textContent = t("welcome.tryAgain") || "Try Again";
   bindAction(retry, () => invoke("nav_open_app", { serverUrl: info.url }));
+  // A server that is down or a network that dropped usually comes back on its
+  // own, so keep trying with a growing delay instead of waiting for a click.
+  // Sign-in portals, redirects and certificate problems need the person.
+  if (info.url && !info.openLabel && !info.message) autoRetry(info.url, t);
   const failedOrigin = normalizeUrl(info.url);
   const backServer = document.getElementById("btn-back-server");
   const canBack = info.canGoBackServer && info.primary && normalizeUrl(info.primary) !== failedOrigin;

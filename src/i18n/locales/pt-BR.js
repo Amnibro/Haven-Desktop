@@ -98,6 +98,8 @@ export default {
   'connection.goBackServer': 'Voltar ao meu servidor',
   'connection.goBackWelcome': 'Voltar às boas-vindas',
   'connection.keepWaiting': 'Continuar aguardando',
+  'connection.retryingIn': 'Tentando novamente em {seconds}s…',
+  'connection.retryingNow': 'Tentando novamente…',
   'connection.problemTitle': 'Problema de conexão',
   'connection.problemMessage': 'O Haven não conseguiu carregar o servidor em {url}.\n\nO servidor pode estar fora do ar, o endereço pode estar incorreto ou a rede caiu.',
   'connection.notHaven': 'Esse servidor não parece ser do Haven. Você voltou ao seu servidor.',

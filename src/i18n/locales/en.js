@@ -98,6 +98,8 @@ export default {
   'connection.goBackServer': 'Go Back to My Server',
   'connection.goBackWelcome': 'Go Back to Welcome',
   'connection.keepWaiting': 'Keep Waiting',
+  'connection.retryingIn': 'Trying again in {seconds}s…',
+  'connection.retryingNow': 'Trying again…',
   'connection.problemTitle': 'Connection Problem',
   'connection.problemMessage': "Haven couldn't load the server at {url}.\n\nThe server may be down, the address may be wrong, or the network dropped.",
   'connection.notHaven': "That server doesn't look like Haven. You were returned to your server.",
