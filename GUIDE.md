@@ -31,6 +31,8 @@ The installer creates a desktop shortcut and start menu entry. Uninstall from **
 
 The Mac build supports the menu bar tray icon, notifications with a dock badge, and self-signed HTTPS from your Haven server. System audio capture for screen share is not available on macOS yet.
 
+Linux builds come in two CPU flavors: x86_64 (`amd64`) and ARM64 (`arm64` / `aarch64`, for Raspberry Pi 4 and 5, Ampere servers and ARM laptops). Pick the file whose name ends in your CPU: `_amd64` or `_x86_64` for Intel and AMD, `_arm64` or `_aarch64` for ARM. `uname -m` prints `x86_64` or `aarch64`. The ARM64 builds need a 64-bit OS with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Raspberry Pi OS Bookworm or newer).
+
 ### Linux (AppImage)
 
 ```bash
@@ -53,7 +55,7 @@ Or double-click the `.deb` to install via your system's package manager. Haven a
 ### Linux (Flatpak)
 
 ```bash
-flatpak install --user Haven_*_x86_64.flatpak
+flatpak install --user Haven_*_$(uname -m).flatpak
 flatpak run com.haven.desktop
 ```
 
