@@ -2,9 +2,13 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
-## Unreleased
+## v2.7.2-tauri (2026-11-19)
 
-- **Arch Linux package.** `packaging/aur` builds `haven-chat-bin` from the release .deb with `makepkg -si`, and it goes on the AUR as `haven-chat-bin`.
+Haven opens again on Wayland desktops where it closed at launch with "Error 71 (Protocol error)". Level with Electron 1.8.2.
+
+- **Opens on Wayland with NVIDIA.** On KDE and other Wayland desktops with NVIDIA's driver, Haven closed as soon as it started, Flatpak included. Haven now turns on WebKit's safer graphics path there before its window opens.
+- **Recovers from a graphics crash on any GPU.** If Haven closes in its first 17 seconds, the next launch uses the safer graphics path, and a second crash moves it to XWayland where an X server is available. Graphics settings you set yourself always win.
+- **Arch Linux package.** `packaging/aur` builds `haven-chat-bin` from the release .deb with `makepkg -si`.
 - **Updates leave pacman installs alone.** Haven hands an update to dpkg only when dpkg installed it, so an Arch system that also has dpkg is no longer offered a .deb install over its pacman package.
 
 ## v2.7.1-tauri (2026-11-09)
