@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 BUNDLE=${1:?usage: publish-flatpak.sh <Haven.flatpak> [out-dir]}
-OUT=${2:-$HOME/ai/amni-bake/releases/flatpak}
+OUT=${2:-$HOME/ai/Platform/Amni-OS/amni-bake/releases/flatpak}
 URL=${HAVEN_FLATPAK_URL:-https://downloads.amni-scient.com/flatpak}
 export GNUPGHOME=${HAVEN_FLATPAK_GNUPG:-$HOME/.config/amni/signing/flatpak-gnupg}
 KEY=$(gpg --list-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')

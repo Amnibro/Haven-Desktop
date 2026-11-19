@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import gzip, hashlib, io, os, shutil, subprocess, sys, tarfile, time
 from pathlib import Path
-out = Path(os.environ.get("HAVEN_APT_DIR", Path.home() / "ai/amni-bake/releases/apt"))
+out = Path(os.environ.get("HAVEN_APT_DIR", Path.home() / "ai/Platform/Amni-OS/amni-bake/releases/apt"))
 gnupg = os.environ.get("HAVEN_APT_GNUPG", str(Path.home() / ".config/amni/signing/flatpak-gnupg"))
 url = os.environ.get("HAVEN_APT_URL", "https://downloads.amni-scient.com/apt")
 keep = int(os.environ.get("HAVEN_APT_KEEP", "3"))

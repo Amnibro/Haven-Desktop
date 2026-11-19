@@ -28,11 +28,11 @@ grep -q "version=\"$V\"" "$META" || sed -i "s#<releases>#<releases>\n    <releas
 podman run --rm --privileged -v "$ROOT:/src" -v "$OUT:/out" -w /src "$IMG" sh -c "flatpak-builder --force-clean --disable-rofiles-fuse --state-dir=/out/.flatpak-builder --repo=/out/flatpak-build-repo /out/flatpak-build flatpak/com.haven.desktop.yml && flatpak build-bundle /out/flatpak-build-repo /out/Haven_${V}_x86_64.flatpak com.haven.desktop && ! flatpak build /out/flatpak-build ldd /app/bin/haven-desktop | grep 'not found'"
 "$ROOT/tools/publish-flatpak.sh" "$OUT/Haven_${V}_x86_64.flatpak"
 python3 -I "$ROOT/tools/publish-apt.py" "$OUT/Haven_${V}_amd64.deb"
-FP=${HAVEN_FLATPAK_DIR:-$HOME/ai/amni-bake/releases/flatpak}
+FP=${HAVEN_FLATPAK_DIR:-$HOME/ai/Platform/Amni-OS/amni-bake/releases/flatpak}
 cp "$FP/Haven-Desktop-x86_64.flatpak" "$FP/haven.flatpakref" "$OUT/"
 cp "$OUT/Haven_${V}_amd64.deb" "$OUT/Haven-Desktop-amd64.deb"
 [[ -f $OUT/Haven_${V}_amd64.AppImage ]] && cp "$OUT/Haven_${V}_amd64.AppImage" "$OUT/Haven-Desktop-x86_64.AppImage"
-DL=${HAVEN_DL_DIR:-$HOME/ai/amni-bake/releases/haven-desktop}
+DL=${HAVEN_DL_DIR:-$HOME/ai/Platform/Amni-OS/amni-bake/releases/haven-desktop}
 mkdir -p "$DL"
 cp "$OUT"/Haven-Desktop-* "$DL/"
 rm -rf "$OUT/flatpak-build" "$OUT/.flatpak-builder" "$OUT/flatpak-build-repo" flatpak/haven.deb
