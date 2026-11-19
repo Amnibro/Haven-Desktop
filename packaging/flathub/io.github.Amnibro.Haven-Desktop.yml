@@ -1,0 +1,54 @@
+id: io.github.Amnibro.Haven-Desktop
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: haven-desktop
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-run/tray-icon:create
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+  - name: haven-desktop
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+      env:
+        CARGO_HOME: /run/build/haven-desktop/cargo
+        XDG_CACHE_HOME: /run/build/haven-desktop/flatpak-node/cache
+        npm_config_cache: /run/build/haven-desktop/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    sources:
+      - type: git
+        url: https://github.com/Amnibro/Haven-Desktop.git
+        tag: v2.7.2-tauri
+        commit: 6ab0d81ba32cefb5aa1c617b2ab13fd2a127e8a2
+      - cargo-sources.json
+      - node-sources.json
+      - type: file
+        path: io.github.Amnibro.Haven-Desktop.desktop
+      - type: file
+        path: io.github.Amnibro.Haven-Desktop.metainfo.xml
+    build-commands:
+      - npm ci --offline --no-audit --no-fund
+      - npm run build
+      - cargo --offline build --release --manifest-path src-tauri/Cargo.toml --features tauri/custom-protocol
+      - install -Dm755 src-tauri/target/release/haven-desktop /app/bin/haven-desktop
+      - install -Dm644 io.github.Amnibro.Haven-Desktop.desktop /app/share/applications/io.github.Amnibro.Haven-Desktop.desktop
+      - install -Dm644 io.github.Amnibro.Haven-Desktop.metainfo.xml /app/share/metainfo/io.github.Amnibro.Haven-Desktop.metainfo.xml
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.Amnibro.Haven-Desktop.png
+      - install -Dm644 src-tauri/icons/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.Amnibro.Haven-Desktop.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.Amnibro.Haven-Desktop.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.Amnibro.Haven-Desktop.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.Amnibro.Haven-Desktop.png
+      - install -Dm644 assets/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.Amnibro.Haven-Desktop.svg
