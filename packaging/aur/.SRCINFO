@@ -1,6 +1,6 @@
 pkgbase = haven-chat-bin
 	pkgdesc = Haven Desktop: native client for Haven, the private self-hosted chat
-	pkgver = 2.7.1
+	pkgver = 2.7.2
 	pkgrel = 1
 	url = https://github.com/Amnibro/Haven-Desktop
 	arch = x86_64
@@ -25,7 +25,7 @@ pkgbase = haven-chat-bin
 	conflicts = haven-desktop
 	options = !strip
 	options = !debug
-	source = https://github.com/Amnibro/Haven-Desktop/releases/download/v2.7.1-tauri/Haven_2.7.1_amd64.deb
-	sha256sums = 78072221f66897d7b09a8ab9ecfea3760811ec058458bdb6447e51c0ae119c01
+	source = https://github.com/Amnibro/Haven-Desktop/releases/download/v2.7.2-tauri/Haven_2.7.2_amd64.deb
+	sha256sums = 8bf5a361e8abb04575d358af163a9295d2f993d0faec3480a27e13523d6fc51b
 
 pkgname = haven-chat-bin
