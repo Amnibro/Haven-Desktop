@@ -78,8 +78,8 @@ pub fn notification_badge(
     let badges = state.server_badges.lock().clone();
     let payload = json!({ "badges": badges, "names": {} });
     let _ = app.emit("server-badge-update", payload);
-    #[cfg(any(windows, target_os = "macos"))]
     let any = badges.values().any(|v| *v);
+    crate::tray::set_unread(&app, any);
     // Red dot on the taskbar icon while anything is unread (Electron's overlay
     // icon). Tauri only implements set_overlay_icon on Windows.
     #[cfg(windows)]

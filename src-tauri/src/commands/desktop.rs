@@ -55,6 +55,7 @@ pub fn desktop_set_start_hidden(app: AppHandle, enabled: bool) -> Result<bool, S
 #[tauri::command]
 pub fn desktop_set_minimize_to_tray(app: AppHandle, enabled: bool) -> Result<bool, String> {
     state::set_value(&app, "minimizeToTray", json!(enabled))?;
+    crate::tray::set_keep_checked(enabled);
     Ok(true)
 }
 

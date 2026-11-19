@@ -2,6 +2,11 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## Unreleased
+
+- **Unread shows on the tray icon.** When any server has something unread, the tray icon (Linux, the macOS menu bar and the Windows tray) gets a red dot and the tooltip says so; it clears when everything is read. Level with Electron 1.8.4.
+- **Keep in tray from the tray menu.** The tray menu has a "Keep in tray when closed" switch, in step with the same setting in Desktop settings.
+
 ## v2.7.2-tauri (2026-11-19)
 
 Haven opens again on Wayland desktops where it closed at launch with "Error 71 (Protocol error)". Level with Electron 1.8.2.
