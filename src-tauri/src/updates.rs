@@ -141,7 +141,7 @@ fn install(app: &AppHandle) {
     let (Some(update), Some(bytes)) = (update, bytes) else { return };
     let _ = app.state::<AppState>().server.lock().stop_server();
     let result = if route() == Route::OwnCopy { replace_copy(&bytes, &update.version) } else { update.install(bytes).map_err(|e| e.to_string()) };
-    match result { Ok(()) => app.restart(), Err(e) => tell(app, "update:error", json!({ "message": state::tv(app, "update.installFailed", &[("error", &e)]) })) }
+    match result { Ok(()) => { #[cfg(target_os = "linux")] crate::gfx::done(); app.restart() } Err(e) => tell(app, "update:error", json!({ "message": state::tv(app, "update.installFailed", &[("error", &e)]) })) }
 }
 #[tauri::command]
 pub fn update_state(app: AppHandle) -> Value {

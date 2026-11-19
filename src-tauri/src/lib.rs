@@ -2,6 +2,8 @@ mod audio;
 #[cfg_attr(not(target_os = "linux"), allow(dead_code, unused_imports))]
 mod cert_trust;
 mod commands;
+#[cfg(target_os = "linux")]
+mod gfx;
 mod i18n;
 mod lowmem;
 mod nav_fail;
@@ -17,6 +19,8 @@ use tauri::Manager;
 use tauri_plugin_store::StoreExt;
 
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    gfx::prepare();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // A second launch (taskbar pin, Start menu) focuses the running app

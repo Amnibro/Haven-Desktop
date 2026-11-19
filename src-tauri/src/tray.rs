@@ -77,6 +77,8 @@ pub fn quit_app(app: &AppHandle) {
         let _ = server.stop_server();
     }
     crate::audio::cleanup();
+    #[cfg(target_os = "linux")]
+    crate::gfx::done();
     app.exit(0);
 }
 #[cfg(test)]
