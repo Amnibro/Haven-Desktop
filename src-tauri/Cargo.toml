@@ -1,6 +1,6 @@
 [package]
 name = "haven-desktop"
-version = "2.7.2"
+version = "2.7.3"
 homepage = "https://haven-app.com/"
 description = "Haven Desktop — Private chat client (Tauri)"
 authors = ["Haven Contributors"]

@@ -2,8 +2,13 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
-## Unreleased
+## v2.7.3-tauri (2026-11-24)
 
+Linux ARM64 builds, a signed pacman repository for Arch Linux, and activity from your other apps. Level with Electron 1.8.2.
+
+- **Linux ARM64.** Haven now ships for ARM64 Linux (Raspberry Pi 4 and 5, ARM laptops and servers) as a .deb, an AppImage and a Flatpak, and the APT and Flatpak repositories carry it. Pick the file whose name ends in `_arm64` or `_aarch64`.
+- **Arch Linux repository.** `haven-chat-bin` is now in a signed pacman repository on downloads.amni-scient.com, so Haven updates with the rest of the system (`sudo pacman -Syu`). Setup steps are in `packaging/arch/README.md`.
+- **Opening Haven again from the Flatpak brings back its window.** A second launch of the Flatpak no longer opens a second copy of Haven; it shows the one already running, the same as the .deb and the AppImage.
 - **Activity from your other apps (Haven #5894).** Games and music players that support rich presence, the kind that shows in Discord, can show as your activity in Haven on Linux and macOS. Switch it on under Settings > Activity > Show activity from apps on this computer (the server needs Haven 4.30.0 or newer). It is off until you do, the app asks you for each server separately, and a server only ever gets what apps announce while you are on a page you said yes to. Only text is shared: nothing is looked up and no artwork is fetched. Haven listens on the first free `discord-ipc-N` socket, so a running Discord is left alone. The Flatpak creates it under `app/com.discordapp.Discord` in your runtime folder, where games already look for the Flatpak Discord. A game that only checks the top-level runtime folder needs a one-time link, described in the guide.
 
 ## v2.7.2-tauri (2026-11-19)
