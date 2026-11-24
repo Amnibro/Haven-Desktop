@@ -13,7 +13,7 @@ pub fn sender(app: &AppHandle, webview: &Webview) -> Option<Sender> {
         _ => None,
     }
 }
-fn action_flag(action: &Option<Value>, key: &str) -> bool { action.as_ref().and_then(|a| a.get(key)).and_then(Value::as_bool).unwrap_or(false) }
+pub(super) fn action_flag(action: &Option<Value>, key: &str) -> bool { action.as_ref().and_then(|a| a.get(key)).and_then(Value::as_bool).unwrap_or(false) }
 async fn ask(app: &AppHandle, text: PromptText) -> (bool, bool) {
     let app = app.clone();
     let (confirm, block) = (text.confirm.clone(), text.block.clone());
@@ -126,7 +126,7 @@ pub fn server_list_set_order(app: AppHandle, webview: Webview, urls: Value) -> b
     list::set_order(&mut current, &urls);
     list::save(&app, &current, &before)
 }
-fn origin_of(url: &str) -> Option<String> { url::Url::parse(url).ok().filter(|u| matches!(u.scheme(), "http" | "https")).map(|u| u.origin().ascii_serialization()) }
+pub(super) fn origin_of(url: &str) -> Option<String> { url::Url::parse(url).ok().filter(|u| matches!(u.scheme(), "http" | "https")).map(|u| u.origin().ascii_serialization()) }
 #[tauri::command]
 pub fn server_mute_get_all(app: AppHandle, webview: Webview) -> Value {
     sender(&app, &webview).and_then(|_| state::get_value(&app, "serverMutes").ok()).filter(Value::is_object).unwrap_or(json!({}))

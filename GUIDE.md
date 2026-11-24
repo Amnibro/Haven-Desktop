@@ -134,6 +134,15 @@ Haven Desktop uses native OS-level notifications instead of browser notification
 - Click a notification to bring Haven to the foreground
 - Works even when Haven is minimized to the system tray
 
+### 🎮 Activity From Other Apps (Linux and macOS)
+
+Games and music players that support rich presence (the kind that shows in Discord) can show as your activity in Haven.
+
+- Turn it on under **Settings → Activity → Show activity from apps on this computer**. It is off until you do, and Haven Desktop asks once for each server
+- Only text is shared: the app name, details, and times. Nothing is looked up and no artwork is fetched
+- Haven listens on the first free `discord-ipc-N` socket, so a running Discord is left alone
+- Flatpak: the socket is created in `$XDG_RUNTIME_DIR/app/com.discordapp.Discord/`, where games already look for the Flatpak version of Discord. A game that only checks `$XDG_RUNTIME_DIR` itself needs a one-time link on the host: `ln -s app/com.discordapp.Discord/discord-ipc-0 "$XDG_RUNTIME_DIR/discord-ipc-0"`
+
 ### 🔽 Minimize to Tray
 
 Closing Haven doesn't quit it — the app minimizes to your system tray. Click the tray icon to bring it back, or right-click for options:

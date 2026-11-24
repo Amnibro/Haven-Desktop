@@ -18,6 +18,7 @@ finish-args:
   # Tray icon (libayatana-appindicator over StatusNotifierItem)
   - --talk-name=org.kde.StatusNotifierWatcher
   - --filesystem=xdg-run/tray-icon:create
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
 
 modules:
   # The GNOME runtime has no appindicator, and Tauri's tray needs it.

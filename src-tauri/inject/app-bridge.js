@@ -1184,6 +1184,11 @@
       onChanged: (cb) => typeof cb === 'function' && listen('server-mute:changed', (data) => { try { cb(data); } catch (err) { console.warn('[Haven] server mute listener failed:', err.message); } }),
     },
     reportKnownServerUrls: (urls) => invoke('report_known_server_urls', { urls }),
+    appActivity: {
+      status: () => invoke('app_activity_status'),
+      enable: () => invoke('app_activity_enable', { action: { fresh: userActedJustNow() } }),
+      disable: () => invoke('app_activity_disable'),
+    },
   };
 
   invoke('server_history_get').then((h) => {
@@ -1191,6 +1196,7 @@
   }).catch(() => {});
   invoke('server_list_get').then((l) => { window.havenDesktop.initialServerList = l || null; }).catch(() => {});
   listen('server-list:changed', () => window.dispatchEvent(new CustomEvent('haven-server-list-changed')));
+  listen('app-activity:update', (c) => document.dispatchEvent(new CustomEvent('haven:app-activity', { detail: { playing: c?.playing || null, listening: c?.listening || null } })));
 
   // ── Notification override ────────────────────────────────
   class HavenNotification {
