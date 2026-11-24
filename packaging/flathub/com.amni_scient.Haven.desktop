@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Haven
+Comment=Private self-hosted chat with voice, video and screen sharing
+Exec=haven-desktop
+Icon=io.github.Amnibro.Haven-Desktop
+Terminal=false
+Categories=Network;Chat;InstantMessaging;
+Keywords=chat;voice;video;messaging;community;
+StartupWMClass=haven-desktop
