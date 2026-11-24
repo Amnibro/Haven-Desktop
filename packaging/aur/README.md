@@ -2,7 +2,9 @@
 
 `haven-chat-bin` is the Arch User Repository package for Haven Desktop. It repackages the signed `.deb` attached to each GitHub release, so Arch gets the same binary as Debian and Ubuntu. It is not called `haven-desktop-bin` because that name belongs to an unrelated Matrix client, and it conflicts with `haven-desktop` because both install `/usr/bin/haven-desktop`.
 
-## Install
+The AUR closed new account registration, so this package is published to Amni-Scient's own signed pacman repository instead: see [`../arch/README.md`](../arch/README.md) for the install steps.
+
+## Install from this folder
 
 Build it from this repo with pacman's own tools:
 

@@ -50,6 +50,17 @@ sudo dpkg -i haven*.deb
 
 Or double-click the `.deb` to install via your system's package manager. Haven appears in your application menu under **Network** / **Chat**.
 
+### Linux (Arch, signed pacman repository)
+
+```bash
+curl -fsSL https://downloads.amni-scient.com/arch/amni-scient.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key 9535881CC052B33C7D99C359C4C6ED5FBF6A6DBB
+printf '\n[amni-scient]\nSigLevel = Required DatabaseRequired\nServer = https://downloads.amni-scient.com/arch/$arch\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Syu haven-chat
+```
+
+x86_64 only for now. Haven then updates with the rest of the system through pacman. Details and the key fingerprint are in [`packaging/arch/README.md`](packaging/arch/README.md).
+
 ### Linux (Flatpak)
 
 ```bash
