@@ -24,11 +24,11 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     gfx::prepare();
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::Builder::new().dbus_id(std::env::var("FLATPAK_ID").unwrap_or_else(|_| "com.haven.desktop".into())).callback(|app, _argv, _cwd| {
             // A second launch (taskbar pin, Start menu) focuses the running app
             // instead of booting a second copy, like Electron's requestSingleInstanceLock.
             tray::show_window(app, false);
-        }))
+        }).build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

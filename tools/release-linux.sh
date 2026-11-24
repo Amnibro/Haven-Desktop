@@ -31,6 +31,7 @@ mkdir -p "$FPU"
 podman run --rm --privileged --platform linux/amd64 -v "$ROOT:/src" -v "$OUT:/out" -v "$FPU:/root/.local/share/flatpak" -w /src "$IMG" sh -c "flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && flatpak-builder --user --arch=$ARCH --install-deps-from=flathub --force-clean --disable-rofiles-fuse --state-dir=/out/.flatpak-builder --repo=/out/flatpak-build-repo /out/flatpak-build flatpak/com.haven.desktop.yml && flatpak build-bundle --arch=$ARCH /out/flatpak-build-repo /out/Haven_${V}_$ARCH.flatpak com.haven.desktop && ! flatpak build /out/flatpak-build ldd /app/bin/haven-desktop | grep 'not found'"
 HAVEN_LINUX_ARCH=$ARCH "$ROOT/tools/publish-flatpak.sh" "$OUT/Haven_${V}_$ARCH.flatpak"
 python3 -I "$ROOT/tools/publish-apt.py" "$OUT/Haven_${V}_$D.deb"
+[[ $D == amd64 ]] && haven-release pacman "$ROOT" "$OUT/Haven_${V}_$D.deb" "$V"
 FP=${HAVEN_FLATPAK_DIR:-$HOME/ai/Platform/Amni-OS/amni-bake/releases/flatpak}
 cp "$FP/Haven-Desktop-$ARCH.flatpak" "$FP/haven.flatpakref" "$OUT/"
 cp "$OUT/Haven_${V}_$D.deb" "$OUT/Haven-Desktop-$D.deb"
