@@ -1,5 +1,5 @@
 use super::history::{action_flag, origin_of, sender, Sender};
-use crate::state::{self, AppState};
+use crate::state;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use tauri::{AppHandle, Manager, Webview};
@@ -17,6 +17,7 @@ fn page(app: &AppHandle, webview: &Webview) -> Option<String> {
 mod listener {
     use super::*;
     use crate::app_activity::{in_flatpak, runtime_dir, system_lookup, Current};
+    use crate::state::AppState;
     use tauri::Emitter;
     pub fn unwatch(app: &AppHandle) {
         let st = app.state::<AppState>();
