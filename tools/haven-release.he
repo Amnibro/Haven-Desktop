@@ -190,14 +190,31 @@ aur(checkout const byte[:], deb const byte[:], version const byte[:]) int:
 	if !run_step(str("rm -rf '", p, "/src' '", p, "/pkg' '", p, "/out' '", a, "' '", p, "/Haven_", version, "_amd64.deb'")):
 		return 1
 	return 0
+pacman(checkout const byte[:], deb const byte[:], version const byte[:]) int:
+	p := str(checkout, "/packaging/aur")
+	if !bump(p, deb, version):
+		return 1
+	if !run_step(str("cp '", deb, "' '", p, "/Haven_", version, "_amd64.deb'")):
+		return 1
+	if !run_step(str("D=\"${HAVEN_ARCH_DIR:-$HOME/ai/Platform/Amni-OS/amni-bake/releases/arch}/x86_64\" && mkdir -p \"$D\" && cd '", p, "' && PACKAGER='Amni-Scient <support@amni-scient.com>' PKGDEST=\"$D\" makepkg -f --nodeps --noconfirm")):
+		return 1
+	sign_cmd := str("export GNUPGHOME=\"${HAVEN_ARCH_GNUPG:-$HOME/.config/amni/signing/flatpak-gnupg}\" && R=\"${HAVEN_ARCH_DIR:-$HOME/ai/Platform/Amni-OS/amni-bake/releases/arch}\" && D=\"$R/x86_64\" && K=$(gpg --list-keys --with-colons | awk -F: '/^fpr/{print $10; exit}') && cd \"$D\" && F=haven-chat-bin-", version, "-1-x86_64.pkg.tar.zst && gpg --batch --yes --quiet --local-user \"$K\" --detach-sign --no-armor \"$F\" && { repo-remove --sign --key \"$K\" amni-scient.db.tar.zst haven-chat-bin >/dev/null 2>&1 || true; } && repo-add --sign --key \"$K\" amni-scient.db.tar.zst \"$F\" && for n in db files; do for s in \"\" .sig; do cp --remove-destination amni-scient.$n.tar.zst$s amni-scient.$n$s; done; done && gpg --verify amni-scient.db.sig amni-scient.db && ls -1t haven-chat-bin-*.pkg.tar.zst | tail -n +4 | while read f; do rm -f \"$f\" \"$f.sig\"; done && gpg --export --armor \"$K\" > \"$R/amni-scient.asc\"")
+	if !run_step(sign_cmd):
+		return 1
+	if !run_step(str("rm -rf '", p, "/src' '", p, "/pkg' '", p, "/Haven_", version, "_amd64.deb'")):
+		return 1
+	say(str("published haven-chat-bin ", version, "-1 to the pacman repo"))
+	return 0
 main():
-	av := args()
-	if av.len == 5:
-		if av[1] == "feed":
-			exit(feed(av[2], av[3], av[4]))
-		if av[1] == "amnios":
-			exit(amnios(av[2], av[3], av[4]))
-		if av[1] == "aur":
-			exit(aur(av[2], av[3], av[4]))
-	say("usage: haven-release feed <dir> <version> <notes file> | amnios <amni-os checkout> <deb file> <version> | aur <haven-desktop checkout> <deb file> <version>")
-	exit(2)
+	a := args()
+	if a.len == 5:
+		if a[1] == "feed":
+			exit(feed(a[2], a[3], a[4]))
+		if a[1] == "amnios":
+			exit(amnios(a[2], a[3], a[4]))
+		if a[1] == "aur":
+			exit(aur(a[2], a[3], a[4]))
+		if a[1] == "pacman":
+			exit(pacman(a[2], a[3], a[4]))
+	say("usage: haven-release feed <dir> <version> <notes file> | amnios <amni-os checkout> <deb file> <version> | aur <haven-desktop checkout> <deb file> <version> | pacman <haven-desktop checkout> <deb file> <version>")
+	exit(2);
