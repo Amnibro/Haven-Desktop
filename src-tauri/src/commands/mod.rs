@@ -1,3 +1,4 @@
+mod activity;
 mod audio_cmds;
 mod desktop;
 mod dialogs;
@@ -10,6 +11,7 @@ mod settings;
 mod shortcuts;
 mod window_cmds;
 
+pub use activity::*;
 pub use audio_cmds::*;
 pub use desktop::*;
 pub use dialogs::*;

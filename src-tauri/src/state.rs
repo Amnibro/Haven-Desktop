@@ -28,6 +28,10 @@ pub struct AppState {
     pub net_problem: Mutex<Option<crate::nav_fail::Problem>>,
     pub nav_inflight: Mutex<Option<std::time::Instant>>,
     pub update: Mutex<crate::updates::UpdateState>,
+    #[cfg(unix)]
+    pub activity: crate::app_activity::Hub,
+    #[cfg(unix)]
+    pub activity_page: Mutex<Option<String>>,
 }
 #[derive(Default)]
 pub struct ListGate { pub asking: HashSet<String>, pub declined: HashSet<String>, pub blocked: HashSet<String>, pub waiting: usize }
@@ -54,6 +58,10 @@ impl Default for AppState {
             net_problem: Mutex::new(None),
             nav_inflight: Mutex::new(None),
             update: Mutex::new(Default::default()),
+            #[cfg(unix)]
+            activity: Default::default(),
+            #[cfg(unix)]
+            activity_page: Mutex::new(None),
         }
     }
 }
@@ -93,6 +101,7 @@ pub fn ensure_defaults(app: &AppHandle) -> Result<(), String> {
         "serverHistory": [],
         "serverListRemoved": [],
         "serverListOrder": [],
+        "appActivityServers": [],
         "language": "auto",
         "languagePreferenceSet": false
     });

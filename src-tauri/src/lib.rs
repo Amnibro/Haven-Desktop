@@ -1,3 +1,5 @@
+#[cfg(unix)]
+pub mod app_activity;
 mod audio;
 #[cfg_attr(not(target_os = "linux"), allow(dead_code, unused_imports))]
 mod cert_trust;
@@ -91,6 +93,9 @@ pub fn run() {
             commands::music_media_keys,
             commands::server_mute_get_all,
             commands::server_mute_set,
+            commands::app_activity_status,
+            commands::app_activity_enable,
+            commands::app_activity_disable,
             commands::clipboard_write_text,
             commands::clipboard_write_image,
             commands::clipboard_read_image,

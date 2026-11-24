@@ -2,6 +2,10 @@
 
 Tracks the Electron app at [ancsemi/Haven-Desktop](https://github.com/ancsemi/Haven-Desktop). Each entry names the upstream release it is level with.
 
+## Unreleased
+
+- **Activity from your other apps (Haven #5894).** Games and music players that support rich presence, the kind that shows in Discord, can show as your activity in Haven on Linux and macOS. Switch it on under Settings > Activity > Show activity from apps on this computer (the server needs Haven 4.30.0 or newer). It is off until you do, the app asks you for each server separately, and a server only ever gets what apps announce while you are on a page you said yes to. Only text is shared: nothing is looked up and no artwork is fetched. Haven listens on the first free `discord-ipc-N` socket, so a running Discord is left alone. The Flatpak creates it under `app/com.discordapp.Discord` in your runtime folder, where games already look for the Flatpak Discord. A game that only checks the top-level runtime folder needs a one-time link, described in the guide.
+
 ## v2.7.2-tauri (2026-11-19)
 
 Haven opens again on Wayland desktops where it closed at launch with "Error 71 (Protocol error)". Level with Electron 1.8.2.
