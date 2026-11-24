@@ -25,6 +25,7 @@ Haven servers generate a self-signed certificate by default, so the client has t
 |---|---|---|---|
 | Windows | Accepted (`--ignore-certificate-errors` on the WebView2 process, same reach as the Electron app's certificate handler) | WASAPI | Built, installed and tested on Windows 11 |
 | Linux | Accepted (WebKitGTK TLS policy set to ignore on both windows) | PulseAudio | AppImage and deb built by CI from Ubuntu 22.04 |
+| Linux (ARM64) | Same as Linux | PulseAudio | AppImage, deb and Flatpak for aarch64, cross-built on x86_64 with `tools/release-linux.sh --arch aarch64` (Ubuntu 22.04 userland, glibc 2.35+) |
 | macOS | Accepted (native WKWebView authentication-challenge hook) | none (null capture) | .app and .dmg built, signed and run on Apple Silicon |
 | Linux (Arch, AUR) | Same as Linux | PulseAudio | [`haven-chat-bin`](packaging/aur/README.md) repackages the release deb into a pacman package (`makepkg -si` in `packaging/aur`, or `yay -S haven-chat-bin` once it is on the AUR) |
 | Linux (Flatpak) | Same as Linux | PulseAudio | Bundle built by CI on the GNOME runtime; hosting a server needs Node on the host, and updates come from re-downloading the bundle rather than the in-app updater |

@@ -7,7 +7,7 @@ fn main() {
     build.include("native/src");
 
     if target_os == "linux" {
-        let cxx = std::env::var("CXX").unwrap_or_else(|_| "g++".into());
+        let cxx = std::env::var(format!("CXX_{}", std::env::var("TARGET").unwrap_or_default().replace('-', "_"))).or_else(|_| std::env::var("CXX")).unwrap_or_else(|_| "g++".into());
         build.compiler(&cxx);
         build.file("native/src/linux/pulse_capture.cpp");
         build.define("PLATFORM_LINUX", None);
