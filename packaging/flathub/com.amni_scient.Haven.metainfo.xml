@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.Amnibro.Haven-Desktop</id>
+  <id>com.amni_scient.Haven</id>
   <name>Haven</name>
   <summary>Private self-hosted chat</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>AGPL-3.0-only</project_license>
-  <developer id="io.github.amnibro">
-    <name>Amnibro</name>
+  <developer id="com.amni_scient">
+    <name>Amni-Scient</name>
   </developer>
   <description>
     <p>
@@ -20,7 +20,7 @@
       community runs.
     </p>
   </description>
-  <launchable type="desktop-id">io.github.Amnibro.Haven-Desktop.desktop</launchable>
+  <launchable type="desktop-id">com.amni_scient.Haven.desktop</launchable>
   <screenshots>
     <screenshot type="default">
       <caption>Joining a Haven server</caption>
@@ -28,12 +28,17 @@
     </screenshot>
   </screenshots>
   <url type="homepage">https://github.com/Amnibro/Haven-Desktop</url>
+  <url type="vcs-browser">https://github.com/Amnibro/Haven-Desktop</url>
   <url type="bugtracker">https://github.com/Amnibro/Haven-Desktop/issues</url>
   <content_rating type="oars-1.1">
     <content_attribute id="social-chat">intense</content_attribute>
     <content_attribute id="social-audio">intense</content_attribute>
     <content_attribute id="social-contacts">intense</content_attribute>
   </content_rating>
+  <branding>
+    <color type="primary" scheme_preference="light">#b9a8f7</color>
+    <color type="primary" scheme_preference="dark">#4b36a9</color>
+  </branding>
   <provides>
     <binary>haven-desktop</binary>
   </provides>
