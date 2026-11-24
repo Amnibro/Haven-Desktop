@@ -26,19 +26,23 @@ json_text(s const byte[:]) byte[>..]:
 			out.push(c)
 	out.push('"')
 	out
-=== -35fc63e7b3fc94b9
+=== -60b75a3b48943471
 feed_target(i int) const byte[:]:
 	match i:
 		0 => "windows-x86_64"
 		1 => "linux-x86_64"
 		2 => "linux-x86_64-deb"
 		3 => "darwin-aarch64"
-		_ => "darwin-x86_64"
+		4 => "darwin-x86_64"
+		5 => "linux-aarch64"
+		_ => "linux-aarch64-deb"
 feed_name(i int, version const byte[:]) byte[>..]:
 	match i:
 		0 => str("Haven_", version, "_x64-setup.exe")
 		1 => str("Haven_", version, "_amd64.AppImage")
 		2 => str("Haven_", version, "_amd64.deb")
+		5 => str("Haven_", version, "_arm64.AppImage")
+		6 => str("Haven_", version, "_arm64.deb")
 		_ => str("Haven.app.tar.gz")
 two_digits(out byte[>..]&, v int):
 	if v < 10: out.push('0')
@@ -95,10 +99,15 @@ feed(dir const byte[:], version const byte[:], notes_path const byte[:]) int:
 	out.append(",\n  \"pub_date\": ")
 	out.append(json_text(feed_now()))
 	out.append(",\n  \"platforms\": {\n")
-	for i 5:
+	for i 7:
 		name := feed_name(i, version)
 		sg byte[>..] ~= []
-		read_file(str(dir, "/", name, ".sig"), sg)
+		has_sig := read_file(str(dir, "/", name, ".sig"), sg)
+		if i >= 5:
+			fbuf byte[>..] ~= []
+			if !has_sig || trim(sg).len == 0 || !read_file(str(dir, "/", name), fbuf):
+				continue
+		if i > 0: out.append(",\n")
 		out.append("    ")
 		out.append(json_text(feed_target(i)))
 		out.append(": {\n      \"signature\": ")
@@ -106,8 +115,7 @@ feed(dir const byte[:], version const byte[:], notes_path const byte[:]) int:
 		out.append(",\n      \"url\": ")
 		out.append(json_text(str("https://github.com/Amnibro/Haven-Desktop/releases/download/v", version, "-tauri/", name)))
 		out.append("\n    }")
-		if i < 4: out.push(',')
-		out.push('\n')
+	out.push('\n')
 	out.append("  }\n}\n")
 	target := str(dir, "/latest.json")
 	write_file_atomic(target, out)
